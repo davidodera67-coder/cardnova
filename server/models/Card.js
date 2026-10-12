@@ -38,7 +38,7 @@ const cardSchema = new mongoose.Schema(
       enum: ["light", "dark", "blue", "purple", "gold", "minimal", "corporate", "luxury"],
       default: "light",
     },
-        design: { type: mongoose.Schema.Types.Mixed, default: {} },
+           design: { type: mongoose.Schema.Types.Mixed, default: {} },
 
     // Step 6 — Buttons shown on the public card
     buttons: [{ type: String, enum: ["save", "call", "whatsapp", "email", "website"] }],
