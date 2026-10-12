@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { api, toServerPayload, fromServerCard } from "./api.js";
 import QRCode from "qrcode";
 import jsPDF from "jspdf";
+import { CardView, previewActions, DesignControls, TemplatePicker, resolveDesign, buttonCss, DEFAULT_DESIGN, luminance } from "./cardDesign.jsx";
 import {
   Home as HomeIcon, Info, LogIn, UserPlus, LayoutDashboard, CreditCard,
   Share2, BarChart3, Users, Wallet, User, Upload, FileText, QrCode,
@@ -35,16 +36,6 @@ const C = {
 const display = { fontFamily: "'Space Grotesk', 'Segoe UI', sans-serif" };
 const body = { fontFamily: "'Inter', 'Segoe UI', sans-serif" };
 
-const THEME_SWATCHES = [
-  { id: "light", label: "Light", bg: "#FFFFFF", fg: "#14171C" },
-  { id: "dark", label: "Dark", bg: "#14171C", fg: "#FFFFFF" },
-  { id: "blue", label: "Blue", bg: "#1C3FAA", fg: "#FFFFFF" },
-  { id: "purple", label: "Purple", bg: "#4B2E83", fg: "#FFFFFF" },
-  { id: "gold", label: "Gold", bg: "#B08D57", fg: "#14171C" },
-  { id: "minimal", label: "Minimal", bg: "#EDEFF3", fg: "#14171C" },
-  { id: "corporate", label: "Corporate", bg: "#0F2540", fg: "#FFFFFF" },
-  { id: "luxury", label: "Luxury", bg: "#1A1A1A", fg: "#D4AF37" },
-];
 
 const FREE_PLAN_LIMIT = 2;
 
@@ -690,7 +681,7 @@ function MyCardsTab({ cards, setCards, atLimit, cardLimit, onNew, onEdit, token 
 }
 
 /* ---------------------------------- CREATE / EDIT WIZARD ---------------------------------- */
-const WIZARD_STEPS = ["Info", "Contact", "Social", "Media & PDF", "Style", "Buttons", "Lead Capture", "Privacy & Publish"];
+const WIZARD_STEPS = ["Info", "Contact", "Social", "Media & PDF", "Design", "Buttons", "Lead Capture", "Privacy & Publish"];
 const BUTTON_OPTIONS = [
   { id: "save", label: "Save Contact" },
   { id: "call", label: "Call Me" },
@@ -705,7 +696,7 @@ function blankCard(id) {
     id, name: "", title: "", company: "", bio: "", photo: null, banner: null, bannerType: null, pdf: null,
     phones: [""], emails: [""], website: "", address: "",
     socials: { linkedin: "", instagram: "", whatsapp: "", facebook: "", twitter: "" },
-    theme: "light", buttons: ["save", "call"], leadCapture: { enabled: false, fields: ["name", "email"] },
+    theme: "light", design: { ...DEFAULT_DESIGN }, buttons: ["save", "call"], leadCapture: { enabled: false, fields: ["name", "email"] },
     privacy: { mode: "public", inviteEmails: [], accessCode: "", accessLinkToken: "" },
     slug: "", status: "Draft", views: 0, leads: 0,
   };
@@ -776,6 +767,7 @@ function CardWizard({ cards, setCards, editingId, onDone, token }) {
         <div className="p-6 rounded-xl" style={{ background: "#fff", border: `1px solid ${C.line}` }}>
           {step === 0 && (
             <>
+              <TemplatePicker card={draft} onChange={update} />
               <Field label="Full name"><TextInput value={draft.name} onChange={e => update({ name: e.target.value })} placeholder="Jane Wambui" /></Field>
               <Field label="Job title"><TextInput value={draft.title} onChange={e => update({ title: e.target.value })} placeholder="Marketing Lead" /></Field>
               <Field label="Company"><TextInput value={draft.company} onChange={e => update({ company: e.target.value })} placeholder="Wambui & Co." /></Field>
@@ -807,21 +799,10 @@ function CardWizard({ cards, setCards, editingId, onDone, token }) {
                 onUploaded={(url, kind) => update({ banner: url, bannerType: kind })} onClear={() => update({ banner: null, bannerType: null })} />
               <UploadRow icon={<FileText size={17} />} label="PDF (brochure, CV, catalog)" value={draft.pdf} type="pdf" accept="application/pdf" token={token}
                 onUploaded={(url) => update({ pdf: url })} onClear={() => update({ pdf: null })} />
-              <p className="text-xs mt-1" style={{ ...body, color: C.mist }}>Accepted: images/PDF up to 5–10MB, video up to 30MB. Files are uploaded to your server's /uploads folder.</p>
+              <p className="text-xs mt-1" style={{ ...body, color: C.mist }}>Accepted: images/PDF up to 5–10MB, video up to 30MB. Files are stored securely in the cloud.</p>
             </>
           )}
-          {step === 4 && (
-            <div className="grid grid-cols-4 gap-3">
-              {THEME_SWATCHES.map(t => (
-                <button key={t.id} onClick={() => update({ theme: t.id })}
-                  className="rounded-lg overflow-hidden text-left"
-                  style={{ border: draft.theme === t.id ? `2px solid ${C.coral}` : `1px solid ${C.line}` }}>
-                  <div style={{ background: t.bg, color: t.fg, height: 44, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>Aa</div>
-                  <div className="text-[11px] px-2 py-1" style={{ ...body, color: C.ink }}>{t.label}</div>
-                </button>
-              ))}
-            </div>
-          )}
+          {step === 4 && <DesignControls card={draft} update={update} />}
           {step === 5 && (
             <>
               <p className="text-xs mb-3" style={{ ...body, color: C.mist }}>Choose which action buttons appear on your public card.</p>
@@ -1023,35 +1004,12 @@ function MultiInput({ label, values, onChange, placeholder, type = "text", max =
 // A tall, phone-shaped frame — the portrait mockup style used for both the
 // wizard's live preview and (in a smaller form) the My Cards dashboard grid.
 function PhoneMockup({ card, size = "large" }) {
-  const t = THEME_SWATCHES.find(s => s.id === card.theme) || THEME_SWATCHES[0];
   const width = size === "large" ? 240 : "100%";
   return (
     <div className="mx-auto" style={{ width }}>
       <div className="rounded-[2rem] p-2 shadow-xl" style={{ background: C.ink }}>
-        <div className="rounded-[1.5rem] overflow-hidden flex flex-col" style={{ background: t.bg, color: t.fg, aspectRatio: "9/17.5" }}>
-          <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col items-center text-center">
-            <div className="w-20 h-20 rounded-full mb-3 overflow-hidden shrink-0 flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }}>
-              {card.photo ? <img src={card.photo} alt="" className="w-full h-full object-cover" /> : null}
-            </div>
-            <div className="font-semibold" style={display}>{card.name || "Your name"}</div>
-            <div className="text-xs opacity-80 mb-2" style={body}>{card.title || "Job title"}{card.company ? ` · ${card.company}` : ""}</div>
-            {card.bio && <p className="text-xs opacity-80 mb-3" style={body}>{card.bio}</p>}
-            <div className="w-full flex flex-col gap-2 mt-1">
-              {(card.buttons || []).map(id => {
-                const b = BUTTON_OPTIONS.find(x => x.id === id);
-                return b ? (
-                  <div key={id} className="w-full text-xs font-semibold py-2.5 rounded-lg" style={{ ...body, background: "rgba(255,255,255,0.15)" }}>
-                    {b.label}
-                  </div>
-                ) : null;
-              })}
-            </div>
-            {card.leadCapture?.enabled && (
-              <div className="w-full mt-2 text-[10px] py-2 rounded-lg" style={{ ...body, background: "rgba(255,255,255,0.1)" }}>
-                + Lead capture form
-              </div>
-            )}
-          </div>
+        <div className="rounded-[1.5rem] overflow-hidden" style={{ aspectRatio: "9/17.5", overflowY: "auto", scrollbarWidth: "none", fontSize: 12, background: "#fff" }}>
+          <CardView card={card} actions={previewActions(card)} />
         </div>
       </div>
     </div>
@@ -1087,6 +1045,12 @@ function SharingTab({ cards, setCards, token }) {
     } catch (err) {
       setSaveError(err.message);
     }
+  };
+  // Keeps the chosen QR look with the card so it's the same next time (stored inside card.design.qr)
+  const saveQrStyle = async (qr) => {
+    const nextCard = { ...card, design: { ...(card.design || {}), qr } };
+    const saved = await api.updateCard(card.id, toServerPayload(nextCard), token);
+    setCards(list => list.map(c => c.id === card.id ? fromServerCard(saved) : c));
   };
   const addEmail = () => {
     if (!emailInput) return;
@@ -1153,7 +1117,7 @@ function SharingTab({ cards, setCards, token }) {
 
       <div className="mt-6 p-6 rounded-xl" style={{ background: "#fff", border: `1px solid ${C.line}` }}>
         <p className="text-sm font-semibold mb-3 flex items-center gap-1.5" style={{ ...body, color: C.ink }}><QrCode size={16} /> QR code</p>
-        <QRCodeCard card={card} />
+        <QRCodeCard key={card.id} card={card} onSaveStyle={saveQrStyle} />
       </div>
     </>
   );
@@ -1173,18 +1137,140 @@ const QR_SHAPES = [
   { id: "square", label: "Square" },
   { id: "dots", label: "Dots" },
   { id: "rounded", label: "Rounded" },
+  { id: "diamond", label: "Diamond" },
+  { id: "classy", label: "Classy" },
+  { id: "barsV", label: "Bars ↕" },
+  { id: "barsH", label: "Bars ↔" },
+  { id: "tiny", label: "Tiny" },
 ];
-const QR_COLOR_PRESETS = ["#14112C", "#7C5CFC", "#1C3FAA", "#000000", "#0F5132"];
+const QR_EYES = [
+  { id: "square", label: "Square" },
+  { id: "rounded", label: "Rounded" },
+  { id: "circle", label: "Circle" },
+];
+const QR_COLOR_PRESETS = ["#14112C", "#7C5CFC", "#1C3FAA", "#000000", "#0F5132", "#B91C1C"];
 
-function QRCodeCard({ card }) {
+function pathRoundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+function drawModule(ctx, shape, x, y, s) {
+  if (shape === "dots") { ctx.beginPath(); ctx.arc(x + s / 2, y + s / 2, s * 0.44, 0, Math.PI * 2); ctx.fill(); }
+  else if (shape === "rounded") { ctx.beginPath(); pathRoundRect(ctx, x, y, s, s, s * 0.3); ctx.fill(); }
+  else if (shape === "diamond") {
+    ctx.beginPath(); ctx.moveTo(x + s / 2, y - s * 0.05); ctx.lineTo(x + s * 1.05, y + s / 2); ctx.lineTo(x + s / 2, y + s * 1.05); ctx.lineTo(x - s * 0.05, y + s / 2); ctx.closePath(); ctx.fill();
+  }
+  else if (shape === "classy") {
+    const r = s * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.lineTo(x + s, y); ctx.lineTo(x + s, y + s - r);
+    ctx.arcTo(x + s, y + s, x + s - r, y + s, r);
+    ctx.lineTo(x, y + s); ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath(); ctx.fill();
+  }
+  else if (shape === "barsV") ctx.fillRect(x + s * 0.12, y - 0.5, s * 0.76, s + 1);
+  else if (shape === "barsH") ctx.fillRect(x - 0.5, y + s * 0.12, s + 1, s * 0.76);
+  else if (shape === "tiny") ctx.fillRect(x + s * 0.14, y + s * 0.14, s * 0.72, s * 0.72);
+  else ctx.fillRect(x, y, s, s);
+}
+
+// Draws one 7x7 "finder" eye (the three big corner squares) in the chosen style
+function drawEye(ctx, style, x, y, s) {
+  const outer = 7 * s, inner = 5 * s, core = 3 * s;
+  ctx.beginPath();
+  if (style === "circle") {
+    ctx.arc(x + outer / 2, y + outer / 2, outer / 2, 0, Math.PI * 2);
+    ctx.moveTo(x + outer / 2 + inner / 2, y + outer / 2);
+    ctx.arc(x + outer / 2, y + outer / 2, inner / 2, 0, Math.PI * 2, true);
+  } else if (style === "rounded") {
+    pathRoundRect(ctx, x, y, outer, outer, s * 2);
+    pathRoundRect(ctx, x + s, y + s, inner, inner, s * 1.3);
+  } else {
+    ctx.rect(x, y, outer, outer);
+    ctx.rect(x + s, y + s, inner, inner);
+  }
+  ctx.fill("evenodd");
+  ctx.beginPath();
+  if (style === "circle") ctx.arc(x + outer / 2, y + outer / 2, core / 2, 0, Math.PI * 2);
+  else if (style === "rounded") pathRoundRect(ctx, x + 2 * s, y + 2 * s, core, core, s * 0.9);
+  else ctx.rect(x + 2 * s, y + 2 * s, core, core);
+  ctx.fill();
+}
+
+const QR_SILHOUETTES = [
+  { id: "none", label: "Plain" },
+  { id: "circle", label: "Circle" },
+  { id: "hexagon", label: "Hexagon" },
+  { id: "heart", label: "Heart" },
+  { id: "shield", label: "Shield" },
+  { id: "burst", label: "Burst" },
+  { id: "diamond", label: "Diamond" },
+];
+
+// Each function answers "is the point (u, v) inside this silhouette?" where u is
+// left→right and v is top→bottom, both in the range -1..1.
+const SILHOUETTE_FNS = {
+  circle: (u, v) => u * u + v * v <= 1,
+  hexagon: (u, v) => Math.abs(v) <= 0.866 && Math.abs(u) * 0.866 + Math.abs(v) * 0.5 <= 0.866,
+  heart: (u, v) => {
+    const x = u * 1.25, y = -v * 1.25 + 0.15;
+    return Math.pow(x * x + y * y - 1, 3) - x * x * y * y * y <= 0;
+  },
+  shield: (u, v) => {
+    if (v < -0.95 || v > 0.95) return false;
+    const hw = v <= 0.1 ? 0.88 : 0.88 * Math.sqrt(Math.max(0, (0.95 - v) / 0.85));
+    return Math.abs(u) <= hw;
+  },
+  burst: (u, v) => Math.hypot(u, v) <= 0.9 + 0.09 * Math.cos(14 * Math.atan2(v, u)),
+  diamond: (u, v) => Math.abs(u) + Math.abs(v) <= 1,
+};
+
+// Largest square (as a fraction of the canvas half-width) that fits inside a silhouette
+function silhouetteFit(fn) {
+  const ok = (h) => [[h, h], [-h, h], [h, -h], [-h, -h], [h, 0], [-h, 0], [0, h], [0, -h]].every(([u, v]) => fn(u, v));
+  let lo = 0.2, hi = 1;
+  for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (ok(mid)) lo = mid; else hi = mid; }
+  return lo * 0.96;
+}
+
+// Deterministic "random" 0..1 for a grid cell, so the decoration doesn't flicker
+function cellNoise(i, j) {
+  let x = Math.imul(i, 374761393) ^ Math.imul(j, 668265263) ^ 0x5bd1e995;
+  x = Math.imul(x ^ (x >>> 13), 1274126177);
+  x ^= x >>> 16;
+  return ((x >>> 0) % 1000) / 1000;
+}
+
+function QRCodeCard({ card, onSaveStyle }) {
   const canvasRef = useRef(null);
   const [ready, setReady] = useState(false);
-  const [shape, setShape] = useState("square");
-  const [fgColor, setFgColor] = useState("#14112C");
-  const [showLogo, setShowLogo] = useState(false);
+  const saved = (card.design && card.design.qr) || {};
+  const [shape, setShape] = useState(saved.shape || "square");
+  const [eye, setEye] = useState(saved.eye || "square");
+  const [fgMode, setFgMode] = useState(saved.fgMode || "single");      // single | gradient
+  const [fg1, setFg1] = useState(saved.fg1 || "#14112C");
+  const [fg2, setFg2] = useState(saved.fg2 || "#7C5CFC");
+  const [gradDir, setGradDir] = useState(saved.gradDir || "diag");       // diag | v | h
+  const [bgColor, setBgColor] = useState(saved.bgColor || "#FFFFFF");
+  const [showLogo, setShowLogo] = useState(!!saved.showLogo);
+  const [sil, setSil] = useState(saved.sil || "none");
+  const [saveState, setSaveState] = useState("idle");   // idle | saving | saved | error
   const qrUrl = `${window.location.origin}/${card.slug || card.id}${
     card.privacy?.mode === "private" && card.privacy?.accessLinkToken ? `?link=${card.privacy.accessLinkToken}` : ""
   }`;
+
+  // Scanners need the dots to be clearly darker than the background
+  const lum = (hex) => luminance(hex);
+  const worstFg = fgMode === "gradient" ? Math.max(lum(fg1), lum(fg2)) : lum(fg1);
+  const contrast = (Math.max(lum(bgColor), worstFg) + 0.05) / (Math.min(lum(bgColor), worstFg) + 0.05);
+  const lowContrast = contrast < 3 || worstFg > lum(bgColor);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1196,40 +1282,60 @@ function QRCodeCard({ card }) {
       const qr = QRCode.create(qrUrl, { errorCorrectionLevel: showLogo ? "H" : "M" });
       const modules = qr.modules;
       const count = modules.size;
-      const cellSize = 8;
+      const cell = 10;
       const margin = 2;
-      const size = (count + margin * 2) * cellSize;
+      const Q = count + margin * 2;                 // the real QR (with its quiet zone), in cells
+      const silFn = sil !== "none" ? SILHOUETTE_FNS[sil] : null;
+      let S = Q;                                    // whole canvas, in cells
+      if (silFn) {
+        S = Math.ceil(Q / silhouetteFit(silFn));
+        if ((S - Q) % 2) S += 1;
+      }
+      const off = (S - Q) / 2;                      // where the real QR starts inside the canvas
+      const size = S * cell;
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#FFFFFF";
+      ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, size, size);
-      ctx.fillStyle = fgColor;
 
-      for (let row = 0; row < count; row++) {
-        for (let col = 0; col < count; col++) {
-          if (!modules.get(row, col)) continue;
-          const x = (col + margin) * cellSize;
-          const y = (row + margin) * cellSize;
-          if (shape === "dots") {
-            ctx.beginPath();
-            ctx.arc(x + cellSize / 2, y + cellSize / 2, cellSize * 0.42, 0, Math.PI * 2);
-            ctx.fill();
-          } else if (shape === "rounded") {
-            const r = cellSize * 0.28;
-            ctx.beginPath();
-            ctx.moveTo(x + r, y);
-            ctx.arcTo(x + cellSize, y, x + cellSize, y + cellSize, r);
-            ctx.arcTo(x + cellSize, y + cellSize, x, y + cellSize, r);
-            ctx.arcTo(x, y + cellSize, x, y, r);
-            ctx.arcTo(x, y, x + cellSize, y, r);
-            ctx.closePath();
-            ctx.fill();
-          } else {
-            ctx.fillRect(x, y, cellSize, cellSize);
+      let paint = fg1;
+      if (fgMode === "gradient") {
+        const g = gradDir === "v" ? ctx.createLinearGradient(0, 0, 0, size)
+          : gradDir === "h" ? ctx.createLinearGradient(0, 0, size, 0)
+          : ctx.createLinearGradient(0, 0, size, size);
+        g.addColorStop(0, fg1);
+        g.addColorStop(1, fg2);
+        paint = g;
+      }
+      ctx.fillStyle = paint;
+
+      const inEye = (row, col) =>
+        (row < 7 && col < 7) || (row < 7 && col >= count - 7) || (row >= count - 7 && col < 7);
+
+      // Decorative dots that form the silhouette (they never touch the real QR area)
+      if (silFn) {
+        for (let gi = 0; gi < S; gi++) {
+          for (let gj = 0; gj < S; gj++) {
+            const nearQR = gi >= off - 1 && gi < off + Q + 1 && gj >= off - 1 && gj < off + Q + 1;
+            if (nearQR) continue;
+            const u = ((gj + 0.5) / S) * 2 - 1;
+            const v = ((gi + 0.5) / S) * 2 - 1;
+            if (!silFn(u, v)) continue;
+            if (cellNoise(gi, gj) < 0.48) drawModule(ctx, shape, gj * cell, gi * cell, cell);
           }
         }
       }
+
+      for (let row = 0; row < count; row++) {
+        for (let col = 0; col < count; col++) {
+          if (!modules.get(row, col) || inEye(row, col)) continue;
+          drawModule(ctx, shape, (col + margin + off) * cell, (row + margin + off) * cell, cell);
+        }
+      }
+      drawEye(ctx, eye, (margin + off) * cell, (margin + off) * cell, cell);
+      drawEye(ctx, eye, (count - 7 + margin + off) * cell, (margin + off) * cell, cell);
+      drawEye(ctx, eye, (margin + off) * cell, (count - 7 + margin + off) * cell, cell);
 
       if (showLogo && card.photo) {
         const img = new Image();
@@ -1239,7 +1345,7 @@ function QRCodeCard({ card }) {
           const logoSize = size * 0.22;
           const cx = size / 2, cy = size / 2;
           ctx.save();
-          ctx.fillStyle = "#FFFFFF";
+          ctx.fillStyle = bgColor;
           ctx.beginPath();
           ctx.arc(cx, cy, logoSize / 2 + 6, 0, Math.PI * 2);
           ctx.fill();
@@ -1259,9 +1365,22 @@ function QRCodeCard({ card }) {
       setReady(false);
     }
     return () => { cancelled = true; };
-  }, [qrUrl, shape, fgColor, showLogo, card.photo]);
+  }, [qrUrl, shape, eye, sil, fgMode, fg1, fg2, gradDir, bgColor, showLogo, card.photo]);
+
+  useEffect(() => { setSaveState(s => (s === "saved" ? "idle" : s)); }, [shape, eye, fgMode, fg1, fg2, gradDir, bgColor, showLogo, sil]);
 
   const filenameBase = card.slug || "cardnova-qr";
+
+  const saveStyle = async () => {
+    if (!onSaveStyle) return;
+    setSaveState("saving");
+    try {
+      await onSaveStyle({ shape, eye, fgMode, fg1, fg2, gradDir, bgColor, showLogo, sil });
+      setSaveState("saved");
+    } catch (e) {
+      setSaveState("error");
+    }
+  };
 
   const downloadPng = () => triggerDownload(canvasRef.current.toDataURL("image/png"), `${filenameBase}-qr.png`);
   const downloadJpg = () => triggerDownload(canvasRef.current.toDataURL("image/jpeg", 0.95), `${filenameBase}-qr.jpg`);
@@ -1280,6 +1399,17 @@ function QRCodeCard({ card }) {
     doc.save(`${filenameBase}-qr.pdf`);
   };
 
+  const chip = (active) => ({ ...body, background: active ? C.ink : C.fog, color: active ? "#fff" : C.ink });
+  const swatchRow = (value, setValue) => (
+    <div className="flex gap-1.5 items-center flex-wrap">
+      {QR_COLOR_PRESETS.map(c => (
+        <button key={c} onClick={() => setValue(c)} className="w-6 h-6 rounded-full"
+          style={{ background: c, border: value === c ? `2px solid ${C.coral}` : `1px solid ${C.line}` }} />
+      ))}
+      <input type="color" value={value} onChange={e => setValue(e.target.value)} className="w-6 h-6 rounded cursor-pointer" style={{ border: `1px solid ${C.line}` }} />
+    </div>
+  );
+
   return (
     <div className="flex flex-col sm:flex-row gap-5 items-start">
       <div className="p-3 rounded-lg shrink-0" style={{ background: "#fff", border: `1px solid ${C.line}` }}>
@@ -1291,35 +1421,92 @@ function QRCodeCard({ card }) {
         </p>
 
         <div className="mb-3">
-          <p className="text-xs font-semibold mb-1.5" style={{ ...body, color: C.mist }}>Shape</p>
-          <div className="flex gap-1.5">
+          <p className="text-xs font-semibold mb-1.5" style={{ ...body, color: C.mist }}>QR silhouette</p>
+          <div className="flex gap-1.5 flex-wrap">
+            {QR_SILHOUETTES.map(s => (
+              <button key={s.id} onClick={() => { setSil(s.id); setSaveState("idle"); }} className="text-xs px-3 py-1.5 rounded-md" style={chip(sil === s.id)}>{s.label}</button>
+            ))}
+          </div>
+          {sil !== "none" && (
+            <p className="text-[11px] mt-1.5" style={{ ...body, color: C.mist }}>The real QR sits in the middle of the shape. Print it at least 4 cm wide so phones scan it easily.</p>
+          )}
+        </div>
+
+        <div className="mb-3">
+          <p className="text-xs font-semibold mb-1.5" style={{ ...body, color: C.mist }}>Dot shape</p>
+          <div className="flex gap-1.5 flex-wrap">
             {QR_SHAPES.map(s => (
-              <button key={s.id} onClick={() => setShape(s.id)}
-                className="text-xs px-3 py-1.5 rounded-md"
-                style={{ ...body, background: shape === s.id ? C.ink : C.fog, color: shape === s.id ? "#fff" : C.ink }}>
-                {s.label}
-              </button>
+              <button key={s.id} onClick={() => setShape(s.id)} className="text-xs px-3 py-1.5 rounded-md" style={chip(shape === s.id)}>{s.label}</button>
             ))}
           </div>
         </div>
 
         <div className="mb-3">
-          <p className="text-xs font-semibold mb-1.5" style={{ ...body, color: C.mist }}>Color</p>
-          <div className="flex gap-1.5 items-center flex-wrap">
-            {QR_COLOR_PRESETS.map(c => (
-              <button key={c} onClick={() => setFgColor(c)}
-                className="w-6 h-6 rounded-full"
-                style={{ background: c, border: fgColor === c ? `2px solid ${C.coral}` : `1px solid ${C.line}` }} />
+          <p className="text-xs font-semibold mb-1.5" style={{ ...body, color: C.mist }}>Corner style</p>
+          <div className="flex gap-1.5 flex-wrap">
+            {QR_EYES.map(s => (
+              <button key={s.id} onClick={() => setEye(s.id)} className="text-xs px-3 py-1.5 rounded-md" style={chip(eye === s.id)}>{s.label}</button>
             ))}
-            <input type="color" value={fgColor} onChange={e => setFgColor(e.target.value)} className="w-6 h-6 rounded cursor-pointer" style={{ border: `1px solid ${C.line}` }} />
           </div>
         </div>
+
+        {eye !== "square" && (
+          <p className="text-[11px] -mt-1 mb-3" style={{ ...body, color: C.mist }}>
+            Rounded corners look great, but a few scanner apps struggle with them. Scan it with your own phone before you print.
+          </p>
+        )}
+
+        <div className="mb-3">
+          <p className="text-xs font-semibold mb-1.5" style={{ ...body, color: C.mist }}>Foreground color</p>
+          <div className="flex gap-1.5 mb-2">
+            <button onClick={() => setFgMode("single")} className="text-xs px-3 py-1.5 rounded-md" style={chip(fgMode === "single")}>Single color</button>
+            <button onClick={() => setFgMode("gradient")} className="text-xs px-3 py-1.5 rounded-md" style={chip(fgMode === "gradient")}>Gradient</button>
+          </div>
+          {swatchRow(fg1, setFg1)}
+          {fgMode === "gradient" && (
+            <div className="mt-2">
+              {swatchRow(fg2, setFg2)}
+              <div className="flex gap-1.5 mt-2">
+                {[["diag", "Diagonal"], ["v", "Vertical"], ["h", "Horizontal"]].map(([id, label]) => (
+                  <button key={id} onClick={() => setGradDir(id)} className="text-xs px-2.5 py-1 rounded-md" style={chip(gradDir === id)}>{label}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mb-3">
+          <p className="text-xs font-semibold mb-1.5" style={{ ...body, color: C.mist }}>Background color</p>
+          <div className="flex gap-1.5 items-center">
+            {["#FFFFFF", "#F4F1FF", "#FFF7E6", "#E8F7EE"].map(c => (
+              <button key={c} onClick={() => setBgColor(c)} className="w-6 h-6 rounded-full"
+                style={{ background: c, border: bgColor === c ? `2px solid ${C.coral}` : `1px solid ${C.line}` }} />
+            ))}
+            <input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="w-6 h-6 rounded cursor-pointer" style={{ border: `1px solid ${C.line}` }} />
+          </div>
+        </div>
+
+        {lowContrast && (
+          <p className="text-xs mb-3 px-3 py-2 rounded-md" style={{ ...body, background: "#FFF4E5", color: "#8A4B00" }}>
+            Heads up: keep the QR dots clearly darker than the background, otherwise some phones won't scan it.
+          </p>
+        )}
 
         {card.photo && (
           <label className="flex items-center gap-2 mb-3">
             <input type="checkbox" checked={showLogo} onChange={e => setShowLogo(e.target.checked)} />
             <span className="text-xs" style={{ ...body, color: C.ink }}>Add profile photo to center</span>
           </label>
+        )}
+
+        {onSaveStyle && (
+          <div className="flex items-center gap-2 mb-3">
+            <Button variant="secondary" onClick={saveStyle} disabled={saveState === "saving"} className="!py-2 text-xs">
+              {saveState === "saving" ? "Saving…" : "Save QR style"}
+            </Button>
+            {saveState === "saved" && <span className="text-xs" style={{ ...body, color: C.success }}>Saved for this card</span>}
+            {saveState === "error" && <span className="text-xs" style={{ ...body, color: C.coralDeep }}>Couldn't save — try again</span>}
+          </div>
         )}
 
         <div className="flex gap-2 flex-wrap">
@@ -1653,44 +1840,28 @@ function PublicCardPage({ slug }) {
   }
 
   // phase === "reveal"
-  const t = THEME_SWATCHES.find(s => s.id === card.theme) || THEME_SWATCHES[0];
+  const tkPage = resolveDesign(card);
   const phones = (card.phones || []).filter(Boolean);
   const emails = (card.emails || []).filter(Boolean);
 
+  // Real, clickable buttons — styled by the same design engine used in the wizard preview
+  const publicActions = (tk) => {
+    const css = buttonCss(tk);
+    const out = [];
+    if (card.buttons.includes("save")) out.push(<button key="save" type="button" onClick={() => downloadVCard(card)} style={css}>Save contact</button>);
+    if (card.buttons.includes("call") && phones[0]) out.push(<a key="call" href={`tel:${phones[0]}`} style={css}>Call</a>);
+    if (card.buttons.includes("whatsapp") && card.socials?.whatsapp) out.push(<a key="wa" href={`https://wa.me/${card.socials.whatsapp.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" style={css}>WhatsApp</a>);
+    if (card.buttons.includes("email") && emails[0]) out.push(<a key="mail" href={`mailto:${emails[0]}`} style={css}>Email</a>);
+    if (card.buttons.includes("website") && card.website) out.push(<a key="web" href={card.website.startsWith("http") ? card.website : `https://${card.website}`} target="_blank" rel="noreferrer" style={css}>Visit website</a>);
+    if (card.pdf) out.push(<a key="pdf" href={card.pdf} target="_blank" rel="noreferrer" style={{ ...css, background: "transparent", border: "none", color: tk.accent, textDecoration: "underline" }}>View attached PDF</a>);
+    return out;
+  };
+
   return (
     <div className="min-h-screen" style={{ background: C.fogDeep }}>
-      <div className="max-w-md mx-auto pb-16">
-        {card.banner && (
-          card.bannerType === "video"
-            ? <video src={card.banner} autoPlay muted loop playsInline className="w-full h-40 object-cover" />
-            : <img src={card.banner} alt="" className="w-full h-40 object-cover" />
-        )}
-        <div className="p-6" style={{ background: t.bg, color: t.fg }}>
-          {card.photo && <img src={card.photo} alt={card.name} className="w-16 h-16 rounded-full object-cover mb-3" />}
-          <h1 style={{ ...display, fontSize: 22, fontWeight: 600 }}>{card.name}</h1>
-          <p className="text-sm opacity-80" style={body}>{card.title}{card.company ? ` · ${card.company}` : ""}</p>
-          {card.bio && <p className="text-sm opacity-80 mt-3" style={body}>{card.bio}</p>}
-        </div>
-
-        <div className="p-5 flex flex-col gap-2.5">
-          {card.buttons.includes("save") && (
-            <Button onClick={() => downloadVCard(card)} className="w-full"><span className="flex items-center justify-center gap-1.5"><Download size={15} /> Save contact</span></Button>
-          )}
-          {card.buttons.includes("call") && phones[0] && (
-            <a href={`tel:${phones[0]}`}><Button variant="secondary" className="w-full"><span className="flex items-center justify-center gap-1.5"><Phone size={15} /> Call</span></Button></a>
-          )}
-          {card.buttons.includes("whatsapp") && card.socials?.whatsapp && (
-            <a href={`https://wa.me/${card.socials.whatsapp.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"><Button variant="secondary" className="w-full">WhatsApp</Button></a>
-          )}
-          {card.buttons.includes("email") && emails[0] && (
-            <a href={`mailto:${emails[0]}`}><Button variant="secondary" className="w-full"><span className="flex items-center justify-center gap-1.5"><Mail size={15} /> Email</span></Button></a>
-          )}
-          {card.buttons.includes("website") && card.website && (
-            <a href={card.website.startsWith("http") ? card.website : `https://${card.website}`} target="_blank" rel="noreferrer"><Button variant="secondary" className="w-full">Visit website</Button></a>
-          )}
-          {card.pdf && (
-            <a href={card.pdf} target="_blank" rel="noreferrer" className="text-xs text-center mt-1" style={{ ...body, color: C.blue }}>View attached PDF</a>
-          )}
+      <div className="max-w-md mx-auto pb-16 min-h-screen" style={{ background: tkPage.bgCss }}>
+        <div style={{ fontSize: "min(5vw, 22.4px)" }}>
+          <CardView card={card} actions={publicActions} bare />
         </div>
 
         {(phones.length > 0 || emails.length > 0) && (
@@ -1718,7 +1889,7 @@ function PublicCardPage({ slug }) {
           </div>
         )}
 
-        <p className="text-center text-xs mt-6" style={{ ...body, color: C.mist }}>Made with CardNova</p>
+        <p className="text-center text-xs mt-6" style={{ ...body, color: tkPage.fg, opacity: 0.6 }}>Made with CardNova</p>
       </div>
     </div>
   );
