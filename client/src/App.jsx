@@ -202,6 +202,84 @@ function NavBar({ page, go, currentUser, onLogout }) {
 }
 
 /* ---------------------------------- HOME PAGE ---------------------------------- */
+const HERO_SLIDES = [
+  { src: "/cardnova-hero-1.jpg", alt: "Colleagues sharing contact details by tapping a CardNova card on a phone", pos: "58% 28%" },
+  { src: "/cardnova-hero-2.jpg", alt: "A guest tapping a CardNova card on a smart door lock", pos: "85% 30%" },
+];
+
+function HomeHero({ go }) {
+  const [slide, setSlide] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    const reduce = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (paused || reduce) return;
+    const t = setInterval(() => setSlide(s => (s + 1) % HERO_SLIDES.length), 6500);
+    return () => clearInterval(t);
+  }, [paused]);
+
+  const perks = [
+    { icon: <QrCode size={18} />, label: "QR & NFC in one card" },
+    { icon: <Pencil size={18} />, label: "Edit anytime, no reprint" },
+    { icon: <Zap size={18} />, label: "Free plan — 2 cards" },
+  ];
+
+  return (
+    <section className="relative overflow-hidden" style={{ background: C.ink }}
+      onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+      <div className="relative" style={{ minHeight: "min(88vh, 760px)" }}>
+        {/* photos */}
+        {HERO_SLIDES.map((s, i) => (
+          <img key={s.src} src={s.src} alt={s.alt}
+            loading={i === 0 ? "eager" : "lazy"}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ objectPosition: s.pos, opacity: slide === i ? 1 : 0, transition: "opacity 1.2s ease" }} />
+        ))}
+        {/* corporate navy overlays: strong at the bottom and left so text is always readable */}
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(20,17,44,0.96) 0%, rgba(20,17,44,0.78) 34%, rgba(20,17,44,0.12) 68%, rgba(20,17,44,0.25) 100%)" }} />
+        <div className="absolute inset-0 hidden md:block" style={{ background: "linear-gradient(90deg, rgba(20,17,44,0.72) 0%, rgba(20,17,44,0) 55%)" }} />
+
+        <div className="relative max-w-6xl mx-auto px-5 md:px-8 flex flex-col justify-end" style={{ minHeight: "min(88vh, 760px)", paddingTop: 96, paddingBottom: 28 }}>
+          <div className="max-w-xl">
+            <span className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] uppercase px-3 py-1.5 rounded-full mb-5"
+              style={{ ...body, background: "rgba(124,92,252,0.22)", color: "#D9CFFF", border: "1px solid rgba(167,139,250,0.45)" }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: C.brass }} /> Digital business cards for Kenya
+            </span>
+            <h1 className="text-white mb-4" style={{ ...display, fontSize: "clamp(2.3rem, 6.4vw, 4.1rem)", fontWeight: 700, lineHeight: 1.04, letterSpacing: "-0.02em" }}>
+              Tap. Connect. Grow.
+            </h1>
+            <p className="text-base md:text-lg mb-7 max-w-md" style={{ ...body, color: "#D3D6E2" }}>
+              Share your business details instantly with NFC and QR — and keep them up to date forever.
+            </p>
+            <div className="flex flex-wrap gap-3 mb-8">
+              <Button onClick={() => go("signup")}>Create digital profile</Button>
+              <Button variant="secondary" onClick={() => { const el = document.getElementById("demo"); if (el) el.scrollIntoView({ behavior: "smooth" }); }}
+                className="!border-white !text-white !bg-transparent">Watch demo</Button>
+            </div>
+          </div>
+
+          {/* trust strip + slide dots */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-5" style={{ borderTop: "1px solid rgba(255,255,255,0.18)" }}>
+            <ul className="flex flex-wrap gap-x-6 gap-y-2">
+              {perks.map(p => (
+                <li key={p.label} className="flex items-center gap-2 text-xs md:text-sm" style={{ ...body, color: "#E4E6F0" }}>
+                  <span style={{ color: C.brass }}>{p.icon}</span>{p.label}
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center gap-2" role="tablist" aria-label="Hero photos">
+              {HERO_SLIDES.map((s, i) => (
+                <button key={s.src} role="tab" aria-selected={slide === i} aria-label={`Show photo ${i + 1}`} onClick={() => setSlide(i)}
+                  className="h-1.5 rounded-full" style={{ width: slide === i ? 28 : 10, background: slide === i ? C.brass : "rgba(255,255,255,0.45)", transition: "width .3s" }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function HomePage({ go }) {
   const features = [
     { icon: <QrCode size={20} />, title: "QR & NFC in one card", text: "Every profile ships with a scannable QR code and an NFC-ready link — tap or scan, same destination." },
@@ -216,30 +294,24 @@ function HomePage({ go }) {
   ];
   return (
     <>
-      {/* HERO */}
-      <section className="relative overflow-hidden" style={{ background: C.ink }}>
-        <div className="max-w-6xl mx-auto px-5 md:px-8 pt-20 pb-24 md:pt-28 md:pb-32 grid md:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
+      {/* HERO — full-width photo slideshow with corporate overlay */}
+      <HomeHero go={go} />
+
+      {/* PRODUCT DEMO VIDEO */}
+      <section id="demo" className="relative overflow-hidden" style={{ background: C.ink }}>
+        <div className="max-w-6xl mx-auto px-5 md:px-8 py-16 md:py-20 grid md:grid-cols-[1.1fr_0.9fr] gap-10 items-center">
           <div>
-            <h1 className="text-white leading-[1.05] mb-6" style={{ ...display, fontSize: "clamp(2.6rem, 6vw, 4.2rem)", fontWeight: 600 }}>
-              Tap.<br />Connect.<br />Grow.
-            </h1>
-            <p className="text-base md:text-lg mb-8 max-w-md" style={{ ...body, color: "#B7BCC6" }}>
-              The smarter way to share your business details using NFC and QR technology.
+            <p className="text-xs font-semibold tracking-[0.18em] uppercase mb-3" style={{ ...body, color: C.brass }}>See it in action</p>
+            <h2 className="text-white mb-4" style={{ ...display, fontSize: "clamp(1.7rem,3.4vw,2.4rem)", fontWeight: 600, lineHeight: 1.15 }}>
+              One tap. Your whole profile, in their hands.
+            </h2>
+            <p className="text-base max-w-md" style={{ ...body, color: "#B7BCC6" }}>
+              Watch how a CardNova card shares your details instantly — no app to install, no typing, nothing to lose.
             </p>
-            <div className="flex flex-wrap gap-3">
-              <Button onClick={() => go("signup")}>Create digital profile</Button>
-              <Button variant="secondary" onClick={() => go("about")} className="!border-white !text-white">Buy card</Button>
-            </div>
           </div>
           <div className="flex justify-center md:justify-end">
             <div className="w-64 rounded-2xl overflow-hidden shadow-2xl" style={{ background: "#000" }}>
-              <video
-                src="/cardnova-intro.mp4"
-                poster="/cardnova-intro-poster.jpg"
-                controls
-                playsInline
-                className="w-full h-full block"
-              />
+              <video src="/cardnova-intro.mp4" poster="/cardnova-intro-poster.jpg" controls playsInline preload="metadata" className="w-full h-full block" />
             </div>
           </div>
         </div>

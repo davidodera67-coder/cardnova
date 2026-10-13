@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 /* =====================================================================
@@ -419,44 +419,90 @@ export function previewActions(card) {
 }
 
 /* ------------------------------ template thumbnail ------------------------------ */
+const THUMB_W = 84, THUMB_H = 150, THUMB_GAP = 8;
+
 function TemplateThumb({ card, tpl, selected, onPick }) {
-  const W = 104, H = 196, inner = 240;
-  const scale = W / inner;
-  const asTpl = { ...card, design: { ...(card.design || {}), template: tpl.id } };
+  const inner = 240;
+  const scale = THUMB_W / inner;
+  // Thumbnails never play video banners (14 autoplaying videos would be heavy on a phone)
+  const asTpl = {
+    ...card,
+    banner: card.bannerType === "video" ? null : card.banner,
+    design: { ...(card.design || {}), template: tpl.id },
+  };
+  const tk = resolveDesign(asTpl);
   return (
-    <button type="button" onClick={onPick} className="shrink-0 text-left" style={{ width: W }}>
-      <div style={{ width: W, height: H, overflow: "hidden", borderRadius: 14, position: "relative", border: selected ? `2.5px solid ${VIOLET}` : `1px solid ${LINE}`, background: "#fff" }}>
+    <button type="button" onClick={onPick} aria-label={`${tpl.label} template`} aria-pressed={selected}
+      className="shrink-0 text-left" style={{ width: THUMB_W, scrollSnapAlign: "start", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+      <div style={{ width: THUMB_W, height: THUMB_H, overflow: "hidden", borderRadius: 12, position: "relative", background: tk.bgCss, border: selected ? `2.5px solid ${VIOLET}` : `1px solid ${LINE}`, boxSizing: "border-box" }}>
         <div style={{ width: inner, transform: `scale(${scale})`, transformOrigin: "top left", pointerEvents: "none", fontSize: 12 }}>
           <CardView card={asTpl} actions={previewActions(asTpl)} />
         </div>
         {selected && (
-          <div style={{ position: "absolute", top: 6, right: 6, width: 20, height: 20, borderRadius: 10, background: VIOLET, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>✓</div>
+          <div style={{ position: "absolute", top: 4, right: 4, width: 18, height: 18, borderRadius: 9, background: VIOLET, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>✓</div>
         )}
       </div>
-      <div style={{ fontSize: 11, color: INK, marginTop: 4, textAlign: "center", fontWeight: 600 }}>{tpl.label}</div>
+      <div style={{ fontSize: 10.5, color: selected ? VIOLET : INK, marginTop: 4, textAlign: "center", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tpl.label}</div>
     </button>
   );
 }
 
+// Compact, paged carousel: small thumbnails, ‹ › buttons that move one "page" at a time.
 export function TemplatePicker({ card, onChange }) {
   const rail = useRef(null);
+  const [pos, setPos] = useState({ page: 1, pages: 1, atStart: true, atEnd: false });
   const current = (card.design && card.design.template) || "classic";
-  const scroll = (dir) => rail.current && rail.current.scrollBy({ left: dir * 240, behavior: "smooth" });
-  const arrow = { position: "absolute", top: 80, width: 30, height: 30, borderRadius: 15, background: VIOLET, color: "#fff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 2, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" };
+  const currentLabel = (TEMPLATES.find(t => t.id === current) || TEMPLATES[0]).label;
+
+  const measure = () => {
+    const el = rail.current;
+    if (!el) return;
+    const pageW = el.clientWidth || 1;
+    const pages = Math.max(1, Math.ceil((el.scrollWidth - 2) / pageW));
+    const page = Math.min(pages, Math.round(el.scrollLeft / pageW) + 1);
+    setPos({ page, pages, atStart: el.scrollLeft <= 2, atEnd: el.scrollLeft + el.clientWidth >= el.scrollWidth - 2 });
+  };
+
+  useEffect(() => {
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  const go = (dir) => {
+    const el = rail.current;
+    if (!el) return;
+    // move by whole thumbnails so the next page always starts on a clean edge
+    const step = THUMB_W + THUMB_GAP;
+    const perPage = Math.max(1, Math.floor((el.clientWidth + THUMB_GAP) / step));
+    el.scrollBy({ left: dir * perPage * step, behavior: "smooth" });
+  };
+
+  const arrow = (disabled) => ({
+    width: 32, height: 32, borderRadius: 16, border: "none", flexShrink: 0,
+    background: disabled ? FOG : VIOLET, color: disabled ? MIST : "#fff",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1,
+  });
+
   return (
-    <div style={{ marginBottom: 20 }}>
-      <p style={{ fontSize: 14, fontWeight: 700, color: INK, marginBottom: 8 }}>
-        Page template <span style={{ fontWeight: 400, color: MIST, fontSize: 12 }}>(click the one you like)</span>
-      </p>
-      <div style={{ position: "relative" }}>
-        <button type="button" aria-label="Previous templates" onClick={() => scroll(-1)} style={{ ...arrow, left: -10 }}><ChevronLeft size={16} /></button>
-        <div ref={rail} style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 4px 8px", scrollbarWidth: "thin" }}>
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: INK, margin: 0 }}>
+          Page template <span style={{ fontWeight: 500, color: VIOLET, fontSize: 12 }}>· {currentLabel}</span>
+        </p>
+        <span style={{ fontSize: 11, color: MIST, whiteSpace: "nowrap" }}>{pos.page} / {pos.pages}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <button type="button" aria-label="Previous templates" disabled={pos.atStart} onClick={() => go(-1)} style={arrow(pos.atStart)}><ChevronLeft size={16} /></button>
+        <div ref={rail} onScroll={measure}
+          style={{ display: "flex", gap: THUMB_GAP, overflowX: "auto", flex: 1, minWidth: 0, scrollSnapType: "x mandatory", scrollbarWidth: "none", msOverflowStyle: "none", padding: "2px 2px 4px" }}>
           {TEMPLATES.map(t => (
             <TemplateThumb key={t.id} card={card} tpl={t} selected={current === t.id}
               onPick={() => onChange({ design: { ...(card.design || {}), template: t.id } })} />
           ))}
         </div>
-        <button type="button" aria-label="More templates" onClick={() => scroll(1)} style={{ ...arrow, right: -10 }}><ChevronRight size={16} /></button>
+        <button type="button" aria-label="More templates" disabled={pos.atEnd} onClick={() => go(1)} style={arrow(pos.atEnd)}><ChevronRight size={16} /></button>
       </div>
     </div>
   );
