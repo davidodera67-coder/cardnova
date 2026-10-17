@@ -3,6 +3,7 @@ import { api, toServerPayload, fromServerCard } from "./api.js";
 import QRCode from "qrcode";
 import jsPDF from "jspdf";
 import { CardView, previewActions, DesignControls, TemplatePicker, resolveDesign, buttonCss, DEFAULT_DESIGN, luminance } from "./cardDesign.jsx";
+import { Studio, StudioPublic } from "./studio.jsx";
 import {
   Home as HomeIcon, Info, LogIn, UserPlus, LayoutDashboard, CreditCard,
   Share2, BarChart3, Users, Wallet, User, Upload, FileText, QrCode,
@@ -333,6 +334,25 @@ function HomePage({ go }) {
         </div>
       </section>
 
+      {/* MENUS & QR SOLUTIONS */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 pb-16">
+        <div className="rounded-2xl p-6 md:p-10" style={{ background: C.ink }}>
+          <p className="text-xs font-semibold tracking-[0.18em] uppercase mb-3" style={{ ...body, color: C.brass }}>New · Menus &amp; QR</p>
+          <h2 className="text-white mb-3 max-w-xl" style={{ ...display, fontSize: "clamp(1.5rem,3vw,2.1rem)", fontWeight: 600, lineHeight: 1.15 }}>
+            Digital menus and more QR pages — all in one account
+          </h2>
+          <p className="text-sm md:text-base max-w-xl mb-5" style={{ ...body, color: "#B7BCC6" }}>
+            Pick from 50 minimalist menu designs (or make your own), take orders on WhatsApp, print table QR cards and tap-to-open NFC tags. Change the menu any time — the QR never changes.
+          </p>
+          <div className="flex flex-wrap gap-2 mb-6">
+            {["Food & drinks menu", "Wi-Fi", "M-Pesa payment", "Coupons", "Events & RSVP", "Feedback", "Google reviews", "Image gallery", "PDF & CV", "Pet ID", "Medical alert", "Links page"].map(x => (
+              <span key={x} className="text-xs px-3 py-1.5 rounded-full" style={{ ...body, background: "#241F45", color: "#D9D3FF" }}>{x}</span>
+            ))}
+          </div>
+          <Button onClick={() => go("signup")}>Start free</Button>
+        </div>
+      </section>
+
       {/* HOW IT WORKS */}
       <section className="py-20" style={{ background: C.fogDeep }}>
         <div className="max-w-6xl mx-auto px-5 md:px-8">
@@ -360,6 +380,7 @@ function HomePage({ go }) {
             <div className="text-3xl font-bold mb-4" style={{ ...display, color: C.ink }}>KES 0</div>
             <ul className="text-sm space-y-2 mb-6" style={{ ...body, color: C.ink }}>
               <li className="flex gap-2"><Check size={16} color={C.success} /> Up to 2 cards</li>
+              <li className="flex gap-2"><Check size={16} color={C.success} /> 3 menus &amp; QR pages</li>
               <li className="flex gap-2"><Check size={16} color={C.success} /> QR code included</li>
               <li className="flex gap-2"><Check size={16} color={C.success} /> Public or private sharing</li>
             </ul>
@@ -369,7 +390,7 @@ function HomePage({ go }) {
             <div className="text-sm font-semibold mb-1" style={{ ...body, color: C.brass }}>Pro</div>
             <div className="text-3xl font-bold mb-4" style={display}>Contact us</div>
             <ul className="text-sm space-y-2 mb-6" style={body}>
-              <li className="flex gap-2"><Check size={16} color={C.brass} /> Unlimited cards</li>
+              <li className="flex gap-2"><Check size={16} color={C.brass} /> More cards &amp; 30 menus / QR pages</li>
               <li className="flex gap-2"><Check size={16} color={C.brass} /> Video banner & PDF uploads</li>
               <li className="flex gap-2"><Check size={16} color={C.brass} /> Lead capture & analytics</li>
             </ul>
@@ -527,6 +548,7 @@ function SignInPage({ go, onAuthSuccess }) {
 /* ---------------------------------- DASHBOARD SHELL ---------------------------------- */
 const DASH_TABS = [
   { id: "cards", label: "My Cards", icon: <CreditCard size={17} /> },
+  { id: "studio", label: "Menus & QR", icon: <QrCode size={17} /> },
   { id: "sharing", label: "Sharing & Access", icon: <Share2 size={17} /> },
   { id: "analytics", label: "Analytics", icon: <BarChart3 size={17} /> },
   { id: "leads", label: "Leads", icon: <Users size={17} /> },
@@ -597,7 +619,7 @@ function Dashboard({ cards, setCards, leads, tab, setTab, editingId, setEditingI
           <button onClick={() => setSidebarOpen(!sidebarOpen)}><Menu size={20} /></button>
         </div>
 
-        <div className="p-5 md:p-10 max-w-4xl">
+        <div className={tab === "studio" ? "p-4 md:p-8 max-w-6xl" : "p-5 md:p-10 max-w-4xl"}>
           {tab === "cards" && loadingCards && <p className="text-sm" style={{ ...body, color: C.mist }}>Loading your cards…</p>}
           {tab === "cards" && loadError && <ErrorBanner message={loadError} />}
           {tab === "cards" && !loadingCards && (
@@ -609,6 +631,7 @@ function Dashboard({ cards, setCards, leads, tab, setTab, editingId, setEditingI
               onDone={() => { setEditingId(null); setTab("cards"); }}
             />
           )}
+          {tab === "studio" && <Studio token={token} currentUser={currentUser} onNewCard={startNewCard} onUpgrade={() => setTab("billing")} />}
           {tab === "sharing" && <SharingTab cards={cards} setCards={setCards} token={token} />}
           {tab === "analytics" && <AnalyticsTab cards={cards} />}
           {tab === "leads" && <LeadsTab leads={leads} />}
@@ -2018,6 +2041,10 @@ export default function App() {
   // tap) isn't one of the app's known internal pages, so treat it as a public card.
   const pathname = window.location.pathname.replace(/^\/+/, "");
   const KNOWN_PAGES = ["", "home", "about", "signup", "signin", "dashboard"];
+  // /p/your-link is a public menu or QR page made in the "Menus & QR" studio
+  if (/^p\/[^/]+\/?$/.test(pathname)) {
+    return <StudioPublic slug={decodeURIComponent(pathname.slice(2).replace(/\/$/, ""))} />;
+  }
   if (pathname && !KNOWN_PAGES.includes(pathname)) {
     return <PublicCardPage slug={pathname} />;
   }
