@@ -858,8 +858,8 @@ function CardWizard({ cards, setCards, editingId, onDone, token }) {
         ))}
       </div>
 
-      <div className="grid md:grid-cols-[1.3fr_1fr] gap-8">
-        <div className="p-6 rounded-xl" style={{ background: "#fff", border: `1px solid ${C.line}` }}>
+      <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] gap-8">
+        <div className="p-6 rounded-xl min-w-0" style={{ background: "#fff", border: `1px solid ${C.line}` }}>
           {step === 0 && (
             <>
               <TemplatePicker card={draft} onChange={update} />
@@ -954,7 +954,7 @@ function CardWizard({ cards, setCards, editingId, onDone, token }) {
         </div>
 
         {/* Live preview */}
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-semibold mb-2" style={{ ...body, color: C.mist }}>Live preview</p>
           <CardPreview card={draft} />
         </div>

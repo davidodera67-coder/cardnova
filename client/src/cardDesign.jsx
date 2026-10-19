@@ -450,6 +450,8 @@ function TemplateThumb({ card, tpl, selected, onPick }) {
 // Compact, paged carousel: small thumbnails, ‹ › buttons that move one "page" at a time.
 export function TemplatePicker({ card, onChange }) {
   const rail = useRef(null);
+  const box = useRef(null);
+  const [railW, setRailW] = useState(null);
   const [pos, setPos] = useState({ page: 1, pages: 1, atStart: true, atEnd: false });
   const current = (card.design && card.design.template) || "classic";
   const currentLabel = (TEMPLATES.find(t => t.id === current) || TEMPLATES[0]).label;
@@ -457,6 +459,13 @@ export function TemplatePicker({ card, onChange }) {
   const measure = () => {
     const el = rail.current;
     if (!el) return;
+    // show only whole thumbnails: size the rail to fit N of them between the two arrows
+    if (box.current) {
+      const avail = box.current.clientWidth - 2 * 32 - 2 * 6;
+      const n = Math.max(1, Math.floor((avail + THUMB_GAP - 4) / (THUMB_W + THUMB_GAP)));
+      const w = n * (THUMB_W + THUMB_GAP) - THUMB_GAP + 4;
+      setRailW(prev => (prev === w ? prev : w));
+    }
     const pageW = el.clientWidth || 1;
     const pages = Math.max(1, Math.ceil((el.scrollWidth - 2) / pageW));
     const page = Math.min(pages, Math.round(el.scrollLeft / pageW) + 1);
@@ -465,8 +474,9 @@ export function TemplatePicker({ card, onChange }) {
 
   useEffect(() => {
     measure();
+    const t = setTimeout(measure, 120);
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    return () => { clearTimeout(t); window.removeEventListener("resize", measure); };
   }, []);
 
   const go = (dir) => {
@@ -486,17 +496,17 @@ export function TemplatePicker({ card, onChange }) {
   });
 
   return (
-    <div style={{ marginBottom: 18 }}>
+    <div style={{ marginBottom: 18, minWidth: 0, maxWidth: "100%" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
         <p style={{ fontSize: 14, fontWeight: 700, color: INK, margin: 0 }}>
           Page template <span style={{ fontWeight: 500, color: VIOLET, fontSize: 12 }}>· {currentLabel}</span>
         </p>
         <span style={{ fontSize: 11, color: MIST, whiteSpace: "nowrap" }}>{pos.page} / {pos.pages}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div ref={box} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minWidth: 0 }}>
         <button type="button" aria-label="Previous templates" disabled={pos.atStart} onClick={() => go(-1)} style={arrow(pos.atStart)}><ChevronLeft size={16} /></button>
         <div ref={rail} onScroll={measure}
-          style={{ display: "flex", gap: THUMB_GAP, overflowX: "auto", flex: 1, minWidth: 0, scrollSnapType: "x mandatory", scrollbarWidth: "none", msOverflowStyle: "none", padding: "2px 2px 4px" }}>
+          style={{ display: "flex", gap: THUMB_GAP, overflowX: "auto", flex: railW ? "none" : 1, width: railW || undefined, maxWidth: "100%", minWidth: 0, scrollSnapType: "x mandatory", scrollbarWidth: "none", msOverflowStyle: "none", padding: "2px 2px 4px" }}>
           {TEMPLATES.map(t => (
             <TemplateThumb key={t.id} card={card} tpl={t} selected={current === t.id}
               onPick={() => onChange({ design: { ...(card.design || {}), template: t.id } })} />
