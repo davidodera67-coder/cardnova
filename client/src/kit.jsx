@@ -585,6 +585,229 @@ export async function tableCardsPdf({ title, baseUrl, tables, qr, logo, accent =
   doc.save(`${filename}-table-cards.pdf`);
 }
 
+/* ------------------------------------------------------- printable menu */
+const PDF_TAGS = { veg: "Vegetarian", vegan: "Vegan", spicy: "Spicy", popular: "Popular", new: "New", halal: "Halal" };
+const PDF_SERIF = ["Playfair Display", "DM Serif Display", "Cormorant Garamond", "Lora", "Fraunces"];
+// The built-in PDF fonts only know basic Latin letters, so smart quotes, emoji etc. are simplified.
+const pdfTxt = (s) => String(s ?? "")
+  .replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, "-")
+  .replace(/…/g, "...").replace(/[•●]/g, "-").replace(/€/g, "EUR ")
+  .replace(/\s+/g, " ").replace(/[^ -~¡-ÿ]/g, "").trim();
+const toRgb = (h, fb = [20, 17, 44]) => {
+  let s = String(h || "").replace("#", "");
+  if (/^[0-9a-f]{3}$/i.test(s)) s = s.split("").map(c => c + c).join("");
+  const m = /^[0-9a-f]{6}/i.exec(s); if (!m) return fb;
+  const v = parseInt(m[0], 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+};
+const rgbLum = ([r, g, b]) => (r * 299 + g * 587 + b * 114) / 1000 / 255;
+const mixRgb = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
+
+async function logoPng(src) {
+  const im = await loadImg(src); if (!im || !im.naturalWidth) return null;
+  try {
+    const k = Math.min(1, 600 / Math.max(im.naturalWidth, im.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+    return { url: c.toDataURL("image/png"), w: c.width, h: c.height };
+  } catch { return null; }
+}
+
+// A printable A4 menu: venue header, two columns of categories/items/prices, contact details + QR at the end.
+// theme "design" = the menu's own colours; "print" = white paper, dark text (saves ink).
+export async function menuPdf({ menu, tokens: t, value, qr, theme = "design", showQr = true, filename = "menu" }) {
+  const v = menu.venue || {};
+  const cats = (menu.categories || []).filter(c => (c.items || []).length);
+  if (!cats.length) throw new Error("Add at least one menu item first, then download the PDF.");
+  const cur = v.currency || "KSh";
+  const print = theme === "print";
+  const acc0 = toRgb(t.accent);
+  let acc = acc0;
+  if (print) { for (let i = 0; i < 8 && rgbLum(acc) > 0.45; i++) acc = mixRgb(acc, [0, 0, 0], 0.18); }
+  const P = print
+    ? { bg: [255, 255, 255], fg: [26, 26, 26], muted: [107, 107, 107], line: [222, 222, 222], accent: acc }
+    : { bg: toRgb(t.bg, [255, 255, 255]), fg: toRgb(t.fg, [20, 20, 20]), muted: toRgb(t.muted, [120, 120, 120]), line: toRgb(t.line, [220, 220, 220]), accent: acc };
+  const HF = PDF_SERIF.includes(t.hFont) ? "times" : "helvetica";
+  const BF = "helvetica";
+  const upper = t.hFont === "Bebas Neue";
+
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const PW = 210, PH = 297, M = 14, GAP = 9, CW = (PW - 2 * M - GAP) / 2;
+  const colX = [M, M + CW + GAP];
+  const font = (f, s, sz) => { doc.setFont(f, s); doc.setFontSize(sz); };
+  const lh = (sz, k = 1.3) => sz * 0.3528 * k;
+  const asc = (sz) => sz * 0.3528 * 0.8;
+  const wid = (s) => doc.getTextWidth(s);
+  const wrap = (text, w) => {
+    const lines = []; let cur = "";
+    String(text).split(" ").forEach(wd => {
+      const tryS = cur ? cur + " " + wd : wd;
+      if (!cur || wid(tryS) <= w) cur = tryS; else { lines.push(cur); cur = wd; }
+    });
+    if (cur) lines.push(cur); return lines;
+  };
+  const fill = (c) => doc.setFillColor(c[0], c[1], c[2]);
+  const ink = (c) => doc.setTextColor(c[0], c[1], c[2]);
+
+  // ---- header (first page)
+  const logo = v.logo ? await logoPng(v.logo) : null;
+  const left = t.header === "left" || t.header === "split";
+  const hx = left ? M : PW / 2, ha = left ? undefined : { align: "center" };
+  let hy = M;
+  const head = [];
+  if (logo) {
+    let lhh = 20, lw = (lhh * logo.w) / logo.h; if (lw > 46) { lw = 46; lhh = (lw * logo.h) / logo.w; }
+    head.push({ k: "logo", y: hy, w: lw, h: lhh }); hy += lhh + 4;
+  }
+  const vname = pdfTxt(v.name) || "Menu";
+  const nameSz = (font(HF, "bold", 30), wid(vname) <= PW - 2 * M ? 30 : 22);
+  font(HF, "bold", nameSz);
+  const nameLines = wrap(upper ? vname.toUpperCase() : vname, PW - 2 * M);
+  head.push({ k: "name", y: hy, lines: nameLines, sz: nameSz }); hy += nameLines.length * lh(nameSz, 1.1) + 1;
+  const tag = pdfTxt(v.tagline);
+  if (tag) { font(BF, "normal", 10.5); const tl = wrap(tag, PW - 2 * M - 20); head.push({ k: "tag", y: hy, lines: tl }); hy += tl.length * lh(10.5, 1.35) + 1; }
+  head.push({ k: "rule", y: hy + 2 }); hy += 2 + 0.8 + 9;
+  const firstTop = hy, nextTop = M + 11;
+
+  // ---- blocks (category headings + items)
+  const blocks = [];
+  cats.forEach(c => {
+    const nm = pdfTxt(c.name) || "Menu";
+    font(HF, "bold", 15);
+    const hl = wrap(upper ? nm.toUpperCase() : nm, CW);
+    font(BF, "italic", 8.5);
+    const nl = c.note ? wrap(pdfTxt(c.note), CW) : [];
+    const hh = hl.length * lh(15, 1.15) + (nl.length ? nl.length * lh(8.5, 1.25) + 0.5 : 0) + 2.5 + 0.4 + 3;
+    blocks.push({
+      keep: true, pre: 5, h: hh,
+      draw(x, y) {
+        let yy = y; font(HF, "bold", 15); ink(P.accent);
+        hl.forEach(l => { doc.text(l, x, yy + asc(15)); yy += lh(15, 1.15); });
+        if (nl.length) { font(BF, "italic", 8.5); ink(P.muted); nl.forEach(l => { doc.text(l, x, yy + asc(8.5)); yy += lh(8.5, 1.25); }); yy += 0.5; }
+        fill(P.line); doc.rect(x, yy + 1.2, CW, 0.4, "F");
+      },
+    });
+    c.items.forEach(it => {
+      const vars = (it.variants || []).filter(x => x && (x.label || x.price !== ""));
+      const nmI = pdfTxt(it.name) || "Item";
+      const priceOk = !vars.length && !it.soldOut && it.price !== "" && it.price != null && isFinite(Number(it.price));
+      const priceS = priceOk ? pdfTxt(money(it.price, cur)) : "";
+      font(BF, "bold", 10.5);
+      const pw = priceS ? wid(priceS) : 0;
+      const nlines = wrap(nmI, CW - (pw ? pw + 5 : 0));
+      font(BF, "normal", 8.5);
+      const dl = it.desc ? wrap(pdfTxt(it.desc), CW * 0.94) : [];
+      const tg = [...(it.tags || []).map(id => PDF_TAGS[id]).filter(Boolean), ...(it.soldOut ? ["SOLD OUT"] : [])].join("  -  ");
+      const vh = vars.length * lh(9, 1.35);
+      const h = nlines.length * lh(10.5, 1.2) + dl.length * lh(8.5, 1.25) + (tg ? lh(7.5, 1.4) : 0) + vh + 3.4;
+      blocks.push({
+        pre: 0, h,
+        draw(x, y) {
+          let yy = y; font(BF, "bold", 10.5); ink(P.fg);
+          nlines.forEach((l, i) => { doc.text(l, x, yy + asc(10.5)); if (i < nlines.length - 1) yy += lh(10.5, 1.2); });
+          const base = yy + asc(10.5);
+          if (priceS) {
+            ink(P.accent); doc.text(priceS, x + CW, y + asc(10.5), { align: "right" });
+            if (nlines.length === 1) {
+              const gap = CW - wid(nlines[0]) - pw - 4;
+              font(BF, "normal", 8); const unit = wid(". ");
+              if (gap > unit * 2) { ink(P.line); doc.text(". ".repeat(Math.floor(gap / unit)), x + wid(nlines[0]) + 2 - 0, base); }
+            }
+          }
+          yy += lh(10.5, 1.2);
+          if (dl.length) { font(BF, "normal", 8.5); ink(P.muted); dl.forEach(l => { doc.text(l, x, yy + asc(8.5)); yy += lh(8.5, 1.25); }); }
+          if (tg) { font(BF, "bold", 7.5); ink(P.accent); doc.text(tg, x, yy + asc(7.5) + 0.4); yy += lh(7.5, 1.4); }
+          vars.forEach(vr => {
+            font(BF, "normal", 9); ink(P.fg); doc.text(pdfTxt(vr.label) || "-", x + 3, yy + asc(9));
+            if (vr.price !== "" && isFinite(Number(vr.price))) { font(BF, "bold", 9); ink(P.accent); doc.text(pdfTxt(money(vr.price, cur)), x + CW, yy + asc(9), { align: "right" }); }
+            yy += lh(9, 1.35);
+          });
+        },
+      });
+    });
+  });
+
+  // ---- flow blocks into two columns / pages
+  const flow = (list, first, top, bottom) => {
+    const pages = [{ top: first, cols: [[], []] }]; let pg = 0, col = 0, y = first;
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
+      const atTop = () => y <= pages[pg].top + 0.01;
+      let need = b.h + (atTop() ? 0 : b.pre || 0);
+      if (b.keep && list[i + 1]) need += list[i + 1].h;
+      if (y + need > bottom && !atTop()) {
+        if (col === 0) col = 1; else { pages.push({ top, cols: [[], []] }); pg++; col = 0; }
+        y = pages[pg].top;
+      }
+      const pre = atTop() ? 0 : b.pre || 0;
+      pages[pg].cols[col].push({ b, y: y + pre }); y += pre + b.h;
+    }
+    return pages;
+  };
+  const fullBottom = PH - M;
+  const infoLines = [];
+  [["Address", v.address], ["Hours", v.hours], ["Phone", v.phone], ["WhatsApp", v.whatsapp], ["Instagram", v.instagram ? "@" + String(v.instagram).replace(/^@/, "") : ""], ["Website", String(v.website || "").replace(/^https?:\/\//, "")], ["Pay", v.pay]]
+    .forEach(([k, val]) => { const s = pdfTxt(val); if (s) infoLines.push([k, s]); });
+  const qrImg = showQr && value ? await qrDataUrl(value, qr, null, 12) : null;
+  const FOOT_H = infoLines.length || qrImg ? 46 : 0;
+
+  let pages = flow(blocks, firstTop, nextTop, fullBottom);
+  // balance the last page's two columns so it doesn't look lopsided
+  const last = pages[pages.length - 1];
+  const lastBlocks = [...last.cols[0], ...last.cols[1]].map(e => e.b);
+  let balanced = null;
+  for (let B = last.top + 25; B <= fullBottom; B += 2) {
+    const r = flow(lastBlocks, last.top, last.top, B);
+    if (r.length === 1) { balanced = r[0]; break; }
+  }
+  if (balanced) pages[pages.length - 1] = balanced;
+  const endY = (pg) => Math.max(...pg.cols.map(c => c.length ? c[c.length - 1].y + c[c.length - 1].b.h : pg.top));
+  const footerOwnPage = FOOT_H > 0 && endY(pages[pages.length - 1]) + 8 + FOOT_H > fullBottom;
+
+  // ---- draw
+  const drawBg = () => { if (!print) { fill(P.bg); doc.rect(0, 0, PW, PH, "F"); } };
+  pages.forEach((pg, pi) => {
+    if (pi > 0) doc.addPage();
+    drawBg();
+    if (pi === 0) {
+      head.forEach(h => {
+        if (h.k === "logo") doc.addImage(logo.url, "PNG", left ? M : (PW - h.w) / 2, h.y, h.w, h.h);
+        if (h.k === "name") { font(HF, "bold", h.sz); ink(P.fg); let yy = h.y; h.lines.forEach(l => { doc.text(l, hx, yy + asc(h.sz) + 1, ha); yy += lh(h.sz, 1.1); }); }
+        if (h.k === "tag") { font(BF, "normal", 10.5); ink(P.muted); let yy = h.y; h.lines.forEach(l => { doc.text(l, hx, yy + asc(10.5), ha); yy += lh(10.5, 1.35); }); }
+        if (h.k === "rule") { fill(P.accent); doc.rect(left ? M : PW / 2 - 9, h.y, 18, 0.8, "F"); }
+      });
+    } else {
+      font(HF, "bold", 11); ink(P.accent); doc.text(vname.slice(0, 50), M, M + 3.5);
+      fill(P.line); doc.rect(M, M + 6.5, PW - 2 * M, 0.3, "F");
+    }
+    pg.cols.forEach((col, ci) => col.forEach(e => e.b.draw(colX[ci], e.y)));
+  });
+  const drawFooter = (yF) => {
+    fill(P.line); doc.rect(M, yF, PW - 2 * M, 0.3, "F");
+    const textW = PW - 2 * M - (qrImg ? 44 : 0);
+    let yy = yF + 4;
+    if (infoLines.length) {
+      font(HF, "bold", 12); ink(P.accent); doc.text("Find us", M, yy + asc(12)); yy += lh(12, 1.4);
+      infoLines.slice(0, 7).forEach(([k, s]) => {
+        font(BF, "bold", 8.5); ink(P.fg); const kw = 20; doc.text(k, M, yy + asc(8.5));
+        font(BF, "normal", 8.5); ink(P.muted);
+        const ls = wrap(s, textW - kw); doc.text(ls[0], M + kw, yy + asc(8.5)); yy += lh(8.5, 1.35);
+        if (ls[1]) { doc.text(ls[1], M + kw, yy + asc(8.5)); yy += lh(8.5, 1.35); }
+      });
+    }
+    if (qrImg) {
+      const qw = 30, qh = Math.min(32, (qw * qrImg.h) / qrImg.w), qx = PW - M - qw - 2, qy = yF + 4;
+      fill([255, 255, 255]); doc.rect(qx - 1.5, qy - 1.5, qw + 3, qh + 3, "F");
+      doc.addImage(qrImg.url, "PNG", qx, qy, qw, qh);
+      font(BF, "normal", 7.5); ink(P.muted); doc.text("Scan to view & order online", qx + qw / 2, qy + qh + 5, { align: "center" });
+    }
+  };
+  if (FOOT_H) {
+    if (footerOwnPage) { doc.addPage(); drawBg(); drawFooter(M + 2); }
+    else drawFooter(fullBottom - FOOT_H);
+  }
+  doc.save(`${filename}-menu.pdf`);
+}
+
 /* -------------------------------------------------------------------- NFC */
 export const nfcSupported = () => typeof window !== "undefined" && "NDEFReader" in window;
 export async function writeNfcTag(url) {

@@ -1,7 +1,7 @@
 // studio.jsx — the "Menus & QR" dashboard section (list, chooser, editor,
 // responses) and the public page a scan opens (/p/your-link).
 import React, { useState, useEffect, useMemo } from "react";
-import { Ic, K, StudioStyles, Btn, Fld, Chips, Toggle, Modal, Note, Spinner, CopyBtn, QRDesigner, NfcPanel, tableCardsPdf, nfcSupported, pageUrl, randomSlug, slugify, downloadText, copyText, uid, DEFAULT_QR } from "./kit.jsx";
+import { Ic, K, StudioStyles, Btn, Fld, Chips, Toggle, Modal, Note, Spinner, CopyBtn, QRDesigner, NfcPanel, tableCardsPdf, menuPdf, nfcSupported, pageUrl, randomSlug, slugify, downloadText, copyText, uid, DEFAULT_QR } from "./kit.jsx";
 import { MenuView, PhoneFrame, VenueTab, MenuItemsTab, OrderingTab, LookTab, emptyMenu, sampleMenu, resolveTokens } from "./menu.jsx";
 import { SOL, CHOOSER, CHOOSER_CATS, SolutionFields, SolutionLook, SolutionView, StaticPreview, isStatic, staticPayload, solutionReady, newSolutionData } from "./solutions.jsx";
 
@@ -300,6 +300,10 @@ function SharePanel({ draft, setDraft, setDirty, token, onSave, saving, dirty })
   const [tables, setTables] = useState(10);
   const [busy, setBusy] = useState(false);
   const [slugErr, setSlugErr] = useState("");
+  const [pdfTheme, setPdfTheme] = useState("design");
+  const [pdfQr, setPdfQr] = useState(true);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfErr, setPdfErr] = useState("");
   const title = deriveTitle(draft.kind, draft.type, draft.data);
 
   if (!value) {
@@ -324,6 +328,13 @@ function SharePanel({ draft, setDraft, setDirty, token, onSave, saving, dirty })
     finally { setBusy(false); }
   };
 
+  const makeMenuPdf = async () => {
+    setPdfBusy(true); setPdfErr("");
+    try { await menuPdf({ menu: draft.data, tokens: resolveTokens(draft.design), value, qr, theme: pdfTheme, showQr: pdfQr, filename: draft.slug || "menu" }); }
+    catch (e) { setPdfErr(e.message || "Could not build the PDF. Please try again."); }
+    finally { setPdfBusy(false); }
+  };
+
   return (
     <div>
       {dirty && !stat && <Note>You have unsaved changes. Save so the live page matches what you see.</Note>}
@@ -346,6 +357,16 @@ function SharePanel({ draft, setDraft, setDirty, token, onSave, saving, dirty })
           <p className="sx-mut" style={{ marginBottom: 8 }}>One printable card per table (4 per A4 page). Each QR already knows its table number, so customers don't have to type it when ordering.</p>
           <div className="sx-row sx-wrap"><span style={{ fontSize: 13 }}>How many tables?</span><input type="number" min="1" max="60" value={tables} onChange={e => setTables(Number(e.target.value) || 1)} style={{ width: 80 }} />
             <Btn icon="download" onClick={makeTables} disabled={busy}>{busy ? "Building PDF…" : "Download table cards (PDF)"}</Btn></div>
+        </div>
+      )}
+      {isMenu && (
+        <div className="sx-card" style={{ marginTop: 12 }}>
+          <div className="sx-row" style={{ marginBottom: 6 }}><Ic n="download" color={K.violetDeep} /><h3 className="sx-h3">Printable menu (PDF)</h3></div>
+          <p className="sx-mut" style={{ marginBottom: 8 }}>A ready-to-print A4 menu with your categories, items, prices, contact details and QR code. Save your latest changes first so the PDF matches your menu.</p>
+          <Fld label="Colours"><Chips value={pdfTheme} onChange={setPdfTheme} options={[{ id: "design", label: "Match my menu design" }, { id: "print", label: "Printer-friendly (white paper)" }]} /></Fld>
+          <Toggle checked={pdfQr} onChange={setPdfQr} label="Add my QR code at the bottom" />
+          {pdfErr && <Note kind="err">{pdfErr}</Note>}
+          <Btn icon="download" onClick={makeMenuPdf} disabled={pdfBusy}>{pdfBusy ? "Building PDF…" : "Download menu (PDF)"}</Btn>
         </div>
       )}
       {/^https?:/i.test(value) && <div style={{ marginTop: 12 }}><NfcPanel url={value} /></div>}
