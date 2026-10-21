@@ -3,7 +3,7 @@
 // smart, video, review, app) and hosted mini-pages (links, landing, files,
 // gallery, feedback, form, coupon, event, payment, medical, pet, product…).
 import React, { useState, useEffect } from "react";
-import { Ic, K, Btn, Fld, Chips, Toggle, Swatches, Note, ImgUpload, CopyBtn, uid, safeUrl, waNumber, digits, money, downloadText } from "./kit.jsx";
+import { Ic, K, Btn, Fld, Chips, Toggle, Swatches, Note, ImgUpload, CopyBtn, uid, safeUrl, waNumber, digits, money, downloadText, qrDataUrl, DEFAULT_QR } from "./kit.jsx";
 import { PAL, DARK, FONTS, fontStack, useFonts } from "./menu.jsx";
 
 /* --------------------------------------------------------------- helpers */
@@ -129,6 +129,38 @@ export const SOL = {
     check: d => gtinProblem(d.gtin),
     payload: d => `https://id.gs1.org/01/${gtin14(d.gtin)}` },
 
+  org: { mode: "page", icon: "users", name: "Organisation / group page", desc: "A branded page for a party, church, club or company: links, contact details, notices — plus a message board your members' cards can show.",
+    defaults: () => ({ image: "", name: "", line1: "", line2: "", links: [], files: [], members: [], messagesPin: "", contactTitle: "Contact Us", phone: "", email: "", whatsapp: "", address: "", dirLabel: "Direction", blocks: [], messagesTitle: "Latest messages", messages: [] }),
+    fields: [
+      { k: "image", label: "Logo (round, shown at the top)", kind: "image" },
+      { k: "name", label: "Name shown under the logo", req: true, ph: "e.g. Candy Apondi Odhiambo" },
+      { k: "line1", label: "Organisation line", ph: "e.g. SAFINA PARTY - NAIROBI" }, { k: "line2", label: "Role or tagline (bold)", ph: "e.g. Event Co-ordinator" },
+      { k: "links", label: "Link cards (with a small picture)", kind: "list", add: "Add a link card", hint: "Big white cards with a picture on the left and an arrow, like “How to join” or “Our Facebook page”.", sub: [
+        { k: "title", label: "Title", ph: "How to join Safina" }, { k: "sub", label: "Small text under it", ph: "Click Here" }, { k: "url", label: "Opens this link", kind: "url" }, { k: "image", label: "Picture", kind: "image" } ] },
+      { k: "messagesTitle", label: "Messages box title" },
+      { k: "members", label: "Members who can read messages", kind: "list", add: "Add a member", hint: "Each member gets their own access code. They type it on this page or on their card to read messages. Only the codes you set work — nobody else can read the messages.", sub: [
+        { k: "name", label: "Member name", ph: "Jane Wanjiku" }, { k: "phone", label: "WhatsApp / phone (to send them the code)", kind: "tel" },
+        { k: "code", label: "Their access code", gen: () => String(Math.floor(100000 + Math.random() * 900000)), hint: "At least 4 characters. Change it any time." }, { k: "invite", kind: "invite" } ] },
+      { k: "messagesPin", label: "Shared code for everyone (optional)", hint: "One code you can give to a whole group. It only shows messages sent to “Everyone”, never private ones. Leave empty to use member codes only." },
+      { k: "messages", label: "Messages", kind: "list", add: "Write a new message", hint: "Write it once here. Every card linked to this page shows it, and when you edit or delete it here they all update. Press “Save changes” after.", sub: [
+        { k: "title", label: "Heading", ph: "Meeting this Saturday" }, { k: "body", label: "Message", kind: "area", max: 4000 }, { k: "audience", kind: "audience" } ] },
+      { k: "files", label: "Documents (PDF)", kind: "list", add: "Add a PDF", hint: "Upload PDFs people can open from this page — e.g. a manifesto or membership form.", sub: [{ k: "title", label: "Title", ph: "Membership form" }, { k: "url", label: "File", kind: "pdf" }] },
+      { k: "contactTitle", label: "Contact box title" }, { k: "phone", label: "Phone number", kind: "tel" }, { k: "email", label: "Email", kind: "email" }, { k: "whatsapp", label: "WhatsApp number (optional)", kind: "tel" },
+      { k: "address", label: "Address (also used by the Direction button)" }, { k: "dirLabel", label: "Direction button text" },
+      { k: "blocks", label: "Text boxes", kind: "list", add: "Add a text box", hint: "For things like “Party's Foundational Statements”. Put each line on its own row.", sub: [
+        { k: "title", label: "Heading" }, { k: "text", label: "Lines", kind: "area", max: 4000 } ] },
+    ],
+    check: d => {
+      const ms = (d.members || []).filter(m => m && (m.name || m.code));
+      const codes = ms.map(m => String(m.code || "").trim().toLowerCase());
+      if (codes.some(c => c.length < 4)) return "Every member needs an access code of at least 4 characters.";
+      if (new Set(codes).size !== codes.length) return "Two members have the same access code. Give each member a different code.";
+      const sh = String(d.messagesPin || "").trim().toLowerCase();
+      if (sh && sh.length < 4) return "The shared code needs at least 4 characters.";
+      if (sh && codes.includes(sh)) return "The shared code can't be the same as a member's code.";
+      return "";
+    } },
+
   url: { mode: "page", icon: "link", name: "Dynamic URL", desc: "A short QR that sends people to your link. Change the link any time; see how many scans.",
     defaults: () => ({ url: "", title: "" }),
     fields: [{ k: "url", label: "Where should it go?", kind: "url", req: true, ph: "https://" }, { k: "title", label: "Name for your own reference (optional)" }] },
@@ -247,6 +279,7 @@ export const SOL = {
 export const CHOOSER = [
   { id: "menu", special: "menu", cat: "food", icon: "utensils", name: "Food & drinks menu", desc: "A digital menu with 50 templates, ordering on WhatsApp and table QR codes.", badge: "Popular" },
   { id: "card", special: "card", cat: "business", icon: "users", name: "Digital business card", desc: "Your contact card with NFC and QR — opens the card builder." },
+  { id: "org", type: "org", cat: "business", badge: "New" },
   { id: "links", type: "links", cat: "links", badge: "Popular" },
   { id: "social", type: "links", cat: "links", icon: "users", name: "Social media page", desc: "All your social accounts on one page.", preset: { title: "Follow us", links: [link("Instagram", "", "instagram"), link("Facebook", "", "facebook"), link("TikTok", "", "tiktok"), link("YouTube", "", "youtube")] } },
   { id: "url", type: "url", cat: "links" }, { id: "smart", type: "smart", cat: "links" },
@@ -289,9 +322,32 @@ export function solutionReady(type, data) {
 export function newSolutionData(c) { return { ...SOL[c.type].defaults(), ...(c.preset ? JSON.parse(JSON.stringify(c.preset)) : {}) }; }
 
 /* ----------------------------------------------------------------- editor */
-function SubField({ f, val, onChange, token, row }) {
+function SubField({ f, val, onChange, token, row, root, patchRow, pageSlug }) {
   if (f.show && !f.show(row)) return null;
   const ph = f.ph || "";
+  if (f.kind === "audience") {
+    const members = (root?.members || []).filter(m => m && (m.name || m.code));
+    const some = row.audience === "some";
+    return (
+      <Fld label="Who should get this message?">
+        <Chips value={some ? "some" : "all"} onChange={v => patchRow({ audience: v, to: v === "all" ? [] : row.to || [] })} options={[{ id: "all", label: "Everyone" }, { id: "some", label: "Only selected members" }]} />
+        {some && (members.length
+          ? <div style={{ marginTop: 8 }}><Chips multi value={row.to || []} onChange={v => patchRow({ to: v })} options={members.map(m => ({ id: m.id, label: m.name || m.code }))} /><p className="sx-hint">Only these members can read it, using their own code.</p></div>
+          : <p className="sx-hint" style={{ color: K.warn }}>Add members above first, then choose who gets this message.</p>)}
+      </Fld>
+    );
+  }
+  if (f.kind === "invite") {
+    const wa = waNumber(row.phone);
+    const link = `${typeof window !== "undefined" ? window.location.origin : ""}/p/${pageSlug || ""}`;
+    const text = `Hello${row.name ? " " + row.name : ""}, your access code for ${root?.name || "our"} messages is ${row.code || "…"}. Open ${link} (or your card), tap Messages and type the code.`;
+    return (
+      <div className="sx-row sx-wrap" style={{ marginBottom: 6 }}>
+        {wa && row.code && pageSlug ? <a className="sx-btn soft sm" href={`https://wa.me/${wa}?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer"><Ic n="chat" size={14} /> Send code on WhatsApp</a> : <span className="sx-hint">Add a phone number{pageSlug ? "" : " and save the page"} to send the code by WhatsApp.</span>}
+        {row.code && <CopyBtn text={row.code} label="Copy code" />}
+      </div>
+    );
+  }
   if (f.kind === "select") return <Fld label={f.label}><select value={val ?? ""} onChange={e => onChange(e.target.value)}>{f.options.map(([id, l]) => <option key={id} value={id}>{l}</option>)}</select></Fld>;
   if (f.kind === "toggle") return <Toggle checked={val} onChange={onChange} label={f.label} />;
   if (f.kind === "image") return <Fld label={f.label}><ImgUpload value={val} onChange={onChange} token={token} /></Fld>;
@@ -303,10 +359,10 @@ function SubField({ f, val, onChange, token, row }) {
   return <Fld label={f.label + (f.req ? " *" : "")} hint={f.hint}><input type={type} inputMode={f.kind === "num" ? "decimal" : undefined} value={val ?? ""} placeholder={ph || (f.kind === "url" ? "https://" : "")} onChange={e => onChange(f.kind === "num" ? e.target.value.replace(/[^\d.]/g, "") : e.target.value)} /></Fld>;
 }
 
-function ListField({ f, items, onChange, token }) {
+function ListField({ f, items, onChange, token, root, pageSlug }) {
   const list = items || [];
   const mv = (i, d) => { const n = [...list]; const j = i + d; if (j < 0 || j >= n.length) return; [n[i], n[j]] = [n[j], n[i]]; onChange(n); };
-  const blank = () => { const o = { id: uid() }; f.sub.forEach(s => { o[s.k] = s.kind === "days" ? [] : s.kind === "toggle" ? false : s.kind === "select" ? s.options[0][0] : ""; }); return o; };
+  const blank = () => { const o = { id: uid() }; f.sub.forEach(s => { o[s.k] = s.gen ? s.gen() : s.kind === "days" ? [] : s.kind === "toggle" ? false : s.kind === "select" ? s.options[0][0] : ""; }); return o; };
   return (
     <Fld label={f.label} hint={f.hint}>
       {list.map((row, i) => (
@@ -317,7 +373,7 @@ function ListField({ f, items, onChange, token }) {
             <button type="button" aria-label="Move down" onClick={() => mv(i, 1)}><Ic n="down" size={14} /></button>
             <button type="button" aria-label="Remove" onClick={() => onChange(list.filter((_, k) => k !== i))}><Ic n="trash" size={14} color={K.warn} /></button>
           </div>
-          {f.sub.map(sf => <SubField key={sf.k} f={sf} row={row} val={row[sf.k]} token={token} onChange={v => onChange(list.map((r, k) => k === i ? { ...r, [sf.k]: v } : r))} />)}
+          {f.sub.map(sf => <SubField key={sf.k} f={sf} row={row} root={root} pageSlug={pageSlug} patchRow={o => onChange(list.map((r, k) => k === i ? { ...r, ...o } : r))} val={row[sf.k]} token={token} onChange={v => onChange(list.map((r, k) => k === i ? { ...r, [sf.k]: v } : r))} />)}
         </div>
       ))}
       <Btn kind="soft" size="sm" icon="plus" onClick={() => onChange([...list, blank()])}>{f.add || "Add"}</Btn>
@@ -325,14 +381,25 @@ function ListField({ f, items, onChange, token }) {
   );
 }
 
-export function SolutionFields({ type, data, set, token }) {
+// New messages get a date; edited ones get an "edited" date (ignored for the first 10 minutes so typing a fresh message doesn't mark it edited).
+function stampMessages(old = [], next = []) {
+  const now = new Date();
+  return next.map(r => {
+    const o = old.find(x => x.id === r.id);
+    if (!o) return { ...r, at: r.at || now.toISOString() };
+    if ((o.title !== r.title || o.body !== r.body) && o.at && now - new Date(o.at) > 600000) return { ...r, edited: now.toISOString() };
+    return r;
+  });
+}
+
+export function SolutionFields({ type, data, set, token, pageSlug }) {
   const s = SOL[type];
   return (
     <div>
       {s.privacy && <Note>{s.privacy}</Note>}
       {s.fields.map(f => {
         if (f.show && !f.show(data)) return null;
-        if (f.kind === "list") return <ListField key={f.k} f={f} items={data[f.k]} token={token} onChange={v => set({ ...data, [f.k]: v })} />;
+        if (f.kind === "list") return <ListField key={f.k} f={f} items={data[f.k]} token={token} root={data} pageSlug={pageSlug} onChange={v => set({ ...data, [f.k]: type === "org" && f.k === "messages" ? stampMessages(data.messages, v) : v })} />;
         return <SubField key={f.k} f={f} row={data} val={data[f.k]} token={token} onChange={v => set({ ...data, [f.k]: v })} />;
       })}
     </div>
@@ -350,7 +417,8 @@ export function lookTokens(design = {}) {
   const l = (((v >> 16) & 255) * 299 + ((v >> 8) & 255) * 587 + (v & 255) * 114) / 1000;
   return { bg, fg, muted, accent: acc, accentFg: l > 150 ? "#111" : "#fff", card, line, dark: DARK.has(key), hFont: design.font || "Space Grotesk", bFont: "Inter", radius: design.round === "sharp" ? 6 : 16 };
 }
-export function SolutionLook({ design, setDesign }) {
+export function SolutionLook({ design, setDesign, type }) {
+  if (type === "org") return <OrgLook design={design} setDesign={setDesign} />;
   const t = lookTokens(design);
   return (
     <div>
@@ -441,7 +509,7 @@ function Redirecting({ t, to, label }) {
   );
 }
 
-export function SolutionView({ type, data, design, title, onEntry, preview }) {
+export function SolutionView({ type, data, design, title, onEntry, preview, slug }) {
   const t = lookTokens(design);
   const d = data || {};
   const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
@@ -453,6 +521,8 @@ export function SolutionView({ type, data, design, title, onEntry, preview }) {
   const copy = async (txt, key) => { try { await navigator.clipboard.writeText(txt); } catch { /* ignore */ } setCopied(key); setTimeout(() => setCopied(""), 1500); };
   const setV = (k, v) => setVals(x => ({ ...x, [k]: v }));
   const A = ({ href, kind, icon, children, ...r }) => <a href={href} style={pb(t, kind)} target={/^https?:/.test(href || "") ? "_blank" : undefined} rel="noreferrer" {...r}>{icon && <Ic n={icon} size={17} />}{children}</a>;
+
+  if (type === "org") return <OrgView data={d} design={design} title={title} preview={preview} slug={slug} />;
 
   /* redirects */
   if (type === "url") { const to = preview ? "" : safeUrl(d.url); return <Frame t={t} preview={preview}>{preview ? <Preview1 t={t} text={`Visitors are sent to ${safeUrl(d.url) || "your link"}`} /> : <Redirecting t={t} to={to} />}</Frame>; }
@@ -741,3 +811,286 @@ export function SolutionView({ type, data, design, title, onEntry, preview }) {
   }
 }
 const Preview1 = ({ t, text }) => <div style={{ textAlign: "center", paddingTop: 50, color: t.muted }}><Ic n="link" size={28} /><p style={{ marginTop: 10 }}>{text}</p><p style={{ fontSize: 12, marginTop: 8 }}>Visitors see a quick “Opening…” screen, then land on your link.</p></div>;
+
+/* ======================================================= organisation page */
+const ORG_LOOKS = {
+  royal: { name: "Royal blue & gold", bg1: "#0b4fc4", bg2: "#031c58", swoosh: "#c9a227", swoosh2: "#9db9f2", card: "#ffffff", title: "#0b1f4b", accent: "#a8870f", btn: "#0b1220" },
+  navy: { name: "Navy & silver", bg1: "#1c2b4d", bg2: "#0a1226", swoosh: "#aab4c8", swoosh2: "#5b6d96", card: "#ffffff", title: "#0a1226", accent: "#516088", btn: "#0a1226" },
+  green: { name: "Green & gold", bg1: "#0f7a3d", bg2: "#043a1c", swoosh: "#e2b93b", swoosh2: "#8fd6a9", card: "#ffffff", title: "#063a1b", accent: "#9a7b0a", btn: "#06210f" },
+  maroon: { name: "Maroon & gold", bg1: "#8a1c2b", bg2: "#3d0711", swoosh: "#d4a937", swoosh2: "#e7a0aa", card: "#ffffff", title: "#3d0711", accent: "#9a7410", btn: "#1b0307" },
+  black: { name: "Black & gold", bg1: "#222222", bg2: "#050505", swoosh: "#d4af37", swoosh2: "#666666", card: "#ffffff", title: "#111111", accent: "#9c7c14", btn: "#000000" },
+  light: { name: "Clean white", bg1: "#f4f6fb", bg2: "#dfe5f3", swoosh: "#7c5cfc", swoosh2: "#c9bdfc", card: "#ffffff", title: "#14112c", accent: "#6b4fe0", btn: "#14112c" },
+};
+export function orgTokens(design = {}) {
+  const base = ORG_LOOKS[design.orgLook] || ORG_LOOKS.royal;
+  return { ...base, ...(design.org || {}) };
+}
+const orgOnDark = (t) => { const m = /^#?([0-9a-f]{6})$/i.exec(t.bg2 || ""); const v = m ? parseInt(m[1], 16) : 0; return (((v >> 16) & 255) * 299 + ((v >> 8) & 255) * 587 + (v & 255) * 114) / 1000 < 150; };
+
+function OrgLook({ design, setDesign }) {
+  const t = orgTokens(design);
+  const pick = (k) => setDesign({ ...design, orgLook: k, org: {} });
+  const up = (o) => setDesign({ ...design, org: { ...(design.org || {}), ...o } });
+  const C = ({ k, label }) => <label className="sx-row" style={{ marginBottom: 8, cursor: "pointer" }}><input type="color" value={t[k]} onChange={e => up({ [k]: e.target.value })} style={{ width: 38, height: 30, padding: 0, border: "none", background: "none" }} /><span style={{ fontSize: 13 }}>{label}</span></label>;
+  return (
+    <div>
+      <Fld label="Colour set" hint="Start from a set, then fine-tune any colour below.">
+        <div className="sx-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          {Object.entries(ORG_LOOKS).map(([k, v]) => (
+            <button key={k} type="button" onClick={() => pick(k)} style={{ border: `2px solid ${(design.orgLook || "royal") === k ? K.violet : K.line}`, borderRadius: 10, padding: 4, background: "#fff" }}>
+              <div style={{ background: `linear-gradient(160deg, ${v.bg1}, ${v.bg2})`, borderRadius: 6, height: 40, position: "relative", overflow: "hidden" }}><div style={{ position: "absolute", left: -6, right: -6, bottom: 4, height: 8, background: v.swoosh, transform: "rotate(-14deg)" }} /></div>
+              <div style={{ fontSize: 10, marginTop: 3 }}>{v.name}</div>
+            </button>
+          ))}
+        </div>
+      </Fld>
+      <Fld label="Fine-tune">
+        <C k="bg1" label="Background (top)" /><C k="bg2" label="Background (bottom)" /><C k="swoosh" label="Gold stripe" /><C k="swoosh2" label="Light stripe" />
+        <C k="title" label="Card headings" /><C k="accent" label="Small text & prices" /><C k="btn" label="Buttons" />
+      </Fld>
+    </div>
+  );
+}
+
+const fmtWhen = (iso) => { try { return new Date(iso).toLocaleString("en-KE", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }); } catch { return ""; } };
+
+// Shared with the member-card "Messages" section so both show messages the same way.
+export function OrgMessages({ title, messages, colors }) {
+  const c = { card: "#fff", title: "#0b1f4b", accent: "#a8870f", text: "#333", line: "#ececec", ...(colors || {}) };
+  const list = [...(messages || [])].filter(m => m && (m.title || m.body)).sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+  if (!list.length) return null;
+  return (
+    <div id="org-msgs" style={{ background: c.card, borderRadius: 14, padding: "16px 18px", marginBottom: 14, boxShadow: "0 2px 10px rgba(0,0,0,.12)" }}>
+      <h2 style={{ margin: "0 0 6px", fontSize: 19, fontWeight: 700, color: c.title, display: "flex", alignItems: "center", gap: 8 }}><Ic n="bell" size={19} />{title || "Latest messages"}</h2>
+      {list.map((m, i) => (
+        <div key={m.id || i} style={{ padding: "12px 0", borderTop: `1px solid ${c.line}` }}>
+          {m.title && <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: c.title }}>{m.title}</p>}
+          {m.at && <p style={{ margin: "2px 0 6px", fontSize: 11.5, color: c.accent }}>{fmtWhen(m.at)}{m.edited ? " · edited" : ""}</p>}
+          {m.body && <p style={{ margin: 0, fontSize: 14.5, color: c.text, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{m.body}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const BOARD_API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+async function boardFetch(slug, code) {
+  const res = await fetch(`${BOARD_API}/pages/public/${encodeURIComponent(slug)}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code || "" }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.message || "Couldn't load messages."); e.status = res.status; throw e; }
+  return data;
+}
+
+// The message board. In the editor preview it shows the draft messages; for visitors it asks the
+// server, which only releases messages to a correct member (or shared) code.
+export function MessageBoard({ slug, preview, previewData, colors }) {
+  const c = { card: "#fff", title: "#0b1f4b", accent: "#a8870f", btn: "#0b1220", muted: "rgba(255,255,255,.85)", ...(colors || {}) };
+  const key = `sx-board-${slug}`;
+  const [st, setSt] = useState({ phase: "loading" });
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = async (cd, fromForm) => {
+    setBusy(true);
+    try {
+      const r = await boardFetch(slug, cd);
+      setSt({ phase: "open", r });
+      if (cd) { try { localStorage.setItem(key, cd); } catch { /* private mode */ } }
+    } catch (e) {
+      if (e.status === 401 || e.status === 403) {
+        if (e.status === 403) { try { localStorage.removeItem(key); } catch { /* ignore */ } }
+        setSt({ phase: "locked" });
+        if (fromForm) setErr(e.message);
+      } else setSt({ phase: "error" });
+    } finally { setBusy(false); }
+  };
+  useEffect(() => {
+    if (preview || !slug) return;
+    let saved = ""; try { saved = localStorage.getItem(key) || ""; } catch { /* ignore */ }
+    load(saved, false);
+  }, [slug, preview]);
+
+  if (preview) {
+    const d = previewData || {};
+    const locked = !!String(d.messagesPin || "").trim() || (d.members || []).some(m => m && m.code);
+    return (
+      <>
+        <OrgMessages title={d.messagesTitle} messages={d.messages} colors={c} />
+        {(d.messages || []).length > 0 && <p style={{ fontSize: 11.5, margin: "-6px 4px 12px", color: c.muted, textAlign: "center" }}>{locked ? "Preview shows every message. Visitors must enter a code first." : "No access code set — anyone with the link can read these messages."}</p>}
+      </>
+    );
+  }
+  if (st.phase === "loading" || st.phase === "error") return null;
+  const wrap = { id: "org-msgs", background: c.card, borderRadius: 14, padding: "16px 18px", marginBottom: 14, boxShadow: "0 2px 10px rgba(0,0,0,.12)" };
+  if (st.phase === "locked") {
+    return (
+      <form id="org-msgs" style={wrap} onSubmit={e => { e.preventDefault(); setErr(""); if (code.trim()) load(code.trim(), true); }}>
+        <h2 style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 700, color: c.title, display: "flex", alignItems: "center", gap: 8 }}><Ic n="lock" size={19} />Members' messages</h2>
+        <p style={{ margin: "0 0 10px", fontSize: 13.5, color: "#666" }}>Enter your access code to read messages from the team.</p>
+        <input value={code} onChange={e => setCode(e.target.value)} placeholder="Access code" autoComplete="off" inputMode="text" style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 10, border: "1.5px solid #d9dce6", fontSize: 16, marginBottom: 8, fontFamily: "inherit" }} />
+        {err && <p style={{ margin: "0 0 8px", fontSize: 13, color: "#c0392b" }}>{err}</p>}
+        <button type="submit" disabled={busy} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: c.btn, color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: busy ? .6 : 1 }}>{busy ? "Checking…" : "View messages"}</button>
+      </form>
+    );
+  }
+  const r = st.r;
+  const out = () => { try { localStorage.removeItem(key); } catch { /* ignore */ } setCode(""); setSt({ phase: "locked" }); };
+  if (!r.messages.length && !r.member) return null;
+  return (
+    <div>
+      {r.messages.length ? <OrgMessages title={r.title} messages={r.messages} colors={c} /> : <div style={wrap}><p style={{ margin: 0, color: "#666" }}>No messages for you right now.</p></div>}
+      {r.member && <p style={{ margin: "-6px 4px 12px", fontSize: 12, color: c.muted, textAlign: "center" }}>Signed in as {r.member.name || "member"} · <button type="button" onClick={out} style={{ background: "none", border: "none", color: "inherit", textDecoration: "underline", cursor: "pointer", fontSize: "inherit", padding: 0, fontFamily: "inherit" }}>Lock</button></p>}
+    </div>
+  );
+}
+
+// "Add to Contact" saves ONLY phone numbers, emails and links (including PDFs) — no address, role or other details.
+function makeOrgVcard(d, pageUrl) {
+  const nm = String(d.name || "Contact").trim().split(/\s+/);
+  const urls = [pageUrl, ...(d.links || []).map(l => safeUrl(l.url)), ...(d.files || []).map(f => safeUrl(f.url))].filter(Boolean);
+  const tel = (n) => String(n).replace(/\s/g, "");
+  return [
+    "BEGIN:VCARD", "VERSION:3.0",
+    `N:${vEsc(nm.slice(1).join(" "))};${vEsc(nm[0])};;;`, `FN:${vEsc(nm.join(" "))}`,
+    d.phone ? `TEL;TYPE=CELL:${tel(d.phone)}` : "",
+    d.whatsapp && tel(d.whatsapp) !== tel(d.phone || "") ? `TEL;TYPE=WORK:${tel(d.whatsapp)}` : "",
+    d.email ? `EMAIL:${vEsc(d.email)}` : "",
+    ...[...new Set(urls)].map(u => `URL:${u}`),
+    "END:VCARD",
+  ].filter(Boolean).join("\r\n");
+}
+
+function OrgView({ data: d, design, title, preview, slug }) {
+  const t = orgTokens(design);
+  useFonts(["Roboto"]);
+  const [menu, setMenu] = useState(false);
+  const [qr, setQr] = useState("");
+  const [toast, setToast] = useState("");
+  const href = typeof window !== "undefined" ? window.location.href.split("#")[0] : "";
+  const say = (m) => { setToast(m); setTimeout(() => setToast(""), 2200); };
+  const dark = orgOnDark(t);
+  const pos = preview ? "absolute" : "fixed";
+  const onBg = dark ? "#fff" : t.title;
+  const links = (d.links || []).filter(l => l && (l.title || l.url));
+  const blocks = (d.blocks || []).filter(b => b && (b.title || b.text));
+  const hasMsgs = (d.messages || []).some(m => m && (m.title || m.body));
+  const showBoard = preview ? hasMsgs : !!slug;
+  const files = (d.files || []).filter(f => f && f.url);
+  const hasContact = d.phone || d.email || d.whatsapp || d.address;
+  const wa = waNumber(d.whatsapp);
+  const go = (id) => { setMenu(false); setTimeout(() => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60); };
+
+  const saveContact = () => {
+    const vcf = makeOrgVcard({ ...d, name: d.name || title }, preview ? "" : href);
+    downloadText(vcf, `${(d.name || "contact").replace(/[^\w]+/g, "-")}.vcf`, "text/vcard");
+  };
+  const share = async () => {
+    try { if (navigator.share) { await navigator.share({ title: d.name || title, url: href }); return; } } catch { return; }
+    try { await navigator.clipboard.writeText(href); say("Link copied"); } catch { say(href); }
+  };
+  const showQr = async () => { setQr("loading"); try { const r = await qrDataUrl(href, { ...DEFAULT_QR, fg1: "#0a1226", frame: "below", frameText: "SCAN ME" }, null, 10); setQr(r.url); } catch { setQr(""); say("Couldn't make the QR code"); } };
+
+  const card = { background: t.card, borderRadius: 14, marginBottom: 14, boxShadow: "0 2px 10px rgba(0,0,0,.14)" };
+  const round = (extra) => ({ width: 52, height: 52, borderRadius: "50%", background: t.btn, color: "#fff", border: "2px solid rgba(255,255,255,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 3px 10px rgba(0,0,0,.3)", padding: 0, ...extra });
+  const menuItems = [
+    showBoard && ["org-msgs", d.messagesTitle || "Messages"],
+    links.length > 0 && ["org-links", "Links"],
+    files.length > 0 && ["org-files", "Documents"],
+    hasContact && ["org-contact", d.contactTitle || "Contact"],
+    ...blocks.map((b, i) => b.title && [`org-b-${i}`, b.title]),
+  ].filter(Boolean);
+
+  return (
+    <div style={{ position: "relative", minHeight: preview ? "100%" : "100vh", background: `linear-gradient(170deg, ${t.bg1} 0%, ${t.bg2} 100%)`, fontFamily: "Roboto, Inter, system-ui, sans-serif", color: onBg }}>
+      <svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, width: "100%", height: 420, pointerEvents: "none" }}>
+        <polygon points="0,26 100,62 100,68 0,32" fill={t.swoosh2} opacity=".55" />
+        <polygon points="0,42 100,78 100,90 0,54" fill={t.swoosh} />
+      </svg>
+
+      <button type="button" aria-label="Menu" onClick={() => setMenu(m => !m)} style={{ ...round({ width: 44, height: 44, background: "rgba(10,18,38,.35)" }), position: pos, top: 14, right: 14, zIndex: 5 }}><Ic n={menu ? "x" : "menu"} size={20} /></button>
+      {menu && (
+        <div style={{ position: pos, top: 66, right: 14, zIndex: 6, background: "#fff", color: t.title, borderRadius: 14, boxShadow: "0 8px 28px rgba(0,0,0,.35)", padding: 8, minWidth: 210 }}>
+          {menuItems.map(([id, label]) => <button key={id} type="button" onClick={() => go(id)} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: "10px 12px", fontSize: 15, fontWeight: 600, color: t.title, cursor: "pointer", fontFamily: "inherit" }}>{label}</button>)}
+          <button type="button" onClick={() => { setMenu(false); saveContact(); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderTop: "1px solid #eee", padding: "10px 12px", fontSize: 15, fontWeight: 600, color: t.title, cursor: "pointer", fontFamily: "inherit" }}>Add to contacts</button>
+          <button type="button" onClick={() => { setMenu(false); share(); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: "10px 12px", fontSize: 15, fontWeight: 600, color: t.title, cursor: "pointer", fontFamily: "inherit" }}>Share this page</button>
+        </div>
+      )}
+
+      <div style={{ position: "relative", zIndex: 2, maxWidth: 520, margin: "0 auto", padding: `${d.image ? 28 : 64}px 16px 0` }}>
+        <div style={{ textAlign: "center", marginBottom: 22 }}>
+          {d.image && <div style={{ width: 150, height: 150, borderRadius: "50%", background: "#fff", margin: "0 auto 16px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px rgba(0,0,0,.28)" }}><img src={d.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /></div>}
+          <h1 style={{ margin: "0 0 6px", fontSize: 28, fontWeight: 700, lineHeight: 1.15, color: onBg }}>{d.name || title || "Your name"}</h1>
+          {d.line1 && <p style={{ margin: 0, fontSize: 16, color: onBg, opacity: .95 }}>{d.line1}</p>}
+          {d.line2 && <p style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 700, color: onBg }}>{d.line2}</p>}
+        </div>
+
+        {showBoard && <MessageBoard slug={slug} preview={preview} previewData={d} colors={{ card: t.card, title: t.title, accent: t.accent, btn: t.btn }} />}
+
+        {links.length > 0 && <div id="org-links">{links.map((l, i) => {
+          const u = safeUrl(l.url);
+          const inner = (
+            <>
+              {l.image ? <img src={l.image} alt="" style={{ width: 54, height: 54, objectFit: "contain", borderRadius: 10, flex: "none" }} /> : <span style={{ width: 54, height: 54, borderRadius: 10, background: `${t.accent}22`, color: t.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Ic n="link" size={22} /></span>}
+              <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 18, color: t.title, lineHeight: 1.2 }}>{l.title || "Link"}</span>{l.sub && <span style={{ display: "block", fontSize: 13.5, color: t.accent, marginTop: 2 }}>{l.sub}</span>}</span>
+              <Ic n="chevR" size={22} color={t.title} />
+            </>
+          );
+          const st = { ...card, display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", textDecoration: "none" };
+          return u ? <a key={l.id || i} href={u} target="_blank" rel="noreferrer" style={st}>{inner}</a> : <div key={l.id || i} style={st}>{inner}</div>;
+        })}</div>}
+
+        {files.length > 0 && (
+          <div id="org-files" style={{ ...card, padding: "14px 18px" }}>
+            <h2 style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 700, color: t.title }}>Documents</h2>
+            {files.map((f, i) => <a key={f.id || i} href={safeUrl(f.url) || "#"} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", textDecoration: "none", borderTop: i ? "1px solid #ececec" : "none", color: t.title }}><span style={{ color: t.accent, display: "flex" }}><Ic n="file" size={22} /></span><span style={{ flex: 1, fontSize: 16 }}>{f.title || "Document (PDF)"}</span><Ic n="download" size={18} color={t.accent} /></a>)}
+          </div>
+        )}
+
+        {hasContact && (
+          <div id="org-contact" style={{ ...card, padding: "16px 18px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, paddingBottom: 14, borderBottom: "1px solid #ececec", marginBottom: 12 }}>
+              <span style={{ width: 46, height: 46, borderRadius: "50%", background: t.btn, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic n="mobile" size={22} /></span>
+              <h2 style={{ margin: 0, fontSize: 19, fontWeight: 500, color: t.title }}>{d.contactTitle || "Contact Us"}</h2>
+            </div>
+            {d.phone && <a href={`tel:${String(d.phone).replace(/\s/g, "")}`} style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>Call Us</span><span style={{ fontSize: 13.5, color: t.accent }}>{d.phone}</span></a>}
+            {wa && <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>WhatsApp</span><span style={{ fontSize: 13.5, color: t.accent }}>{d.whatsapp}</span></a>}
+            {d.email && <a href={`mailto:${d.email}`} style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>Email</span><span style={{ fontSize: 13.5, color: t.accent, wordBreak: "break-all" }}>{d.email}</span></a>}
+            {d.address && <p style={{ margin: "0 0 12px", fontSize: 13.5, color: t.accent }}>{d.address}</p>}
+            {d.address && <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(d.address)}`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: t.btn, color: "#fff", textDecoration: "none", padding: "10px 18px", borderRadius: 999, fontSize: 14.5 }}><Ic n="nav" size={15} />{d.dirLabel || "Direction"}</a>}
+          </div>
+        )}
+
+        {blocks.map((b, i) => (
+          <div key={b.id || i} id={`org-b-${i}`} style={{ ...card, padding: "16px 18px" }}>
+            {b.title && <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 700, color: t.title, lineHeight: 1.2 }}>{b.title}</h2>}
+            {String(b.text || "").split(/\r?\n/).filter(x => x.trim()).map((ln, k) => <p key={k} style={{ margin: "0 0 12px", fontSize: 17, fontWeight: 700, color: t.accent, lineHeight: 1.3 }}>{ln}</p>)}
+          </div>
+        ))}
+
+        <p style={{ textAlign: "center", fontSize: 11, color: onBg, opacity: .6, margin: "18px 0 96px" }}>Made with CardNova</p>
+      </div>
+
+      <div style={{ position: "sticky", bottom: 0, zIndex: 4, display: "flex", justifyContent: "space-between", alignItems: "flex-end", padding: "0 14px 14px", pointerEvents: "none", marginTop: -84 }}>
+        <div style={{ display: "flex", gap: 10, pointerEvents: "auto" }}>
+          <button type="button" aria-label="Show QR code" onClick={showQr} style={round()}><Ic n="qr" size={22} /></button>
+          <button type="button" aria-label="Share" onClick={share} style={round()}><Ic n="upload" size={20} /></button>
+        </div>
+        <button type="button" onClick={saveContact} style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10, background: t.btn, color: "#fff", border: "2px solid rgba(255,255,255,.25)", borderRadius: 999, padding: "6px 8px 6px 18px", cursor: "pointer", boxShadow: "0 3px 10px rgba(0,0,0,.3)", fontFamily: "inherit" }}>
+          <span style={{ fontSize: 14, lineHeight: 1.15, textAlign: "center" }}>Add to<br />Contact</span>
+          <span style={{ width: 38, height: 38, borderRadius: "50%", background: "#fff", color: t.btn, display: "flex", alignItems: "center", justifyContent: "center" }}><Ic n="plus" size={22} sw={2.4} /></span>
+        </button>
+      </div>
+
+      {toast && <div style={{ position: pos, left: "50%", bottom: 86, transform: "translateX(-50%)", background: "#111", color: "#fff", padding: "8px 14px", borderRadius: 999, fontSize: 13, zIndex: 9 }}>{toast}</div>}
+      {qr && (
+        <div onClick={() => setQr("")} style={{ position: pos, inset: 0, zIndex: 10, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: 18, textAlign: "center", maxWidth: 320, width: "100%", color: "#111" }}>
+            {qr === "loading" ? <p style={{ padding: 30 }}>Making QR code…</p> : <img src={qr} alt="QR code for this page" style={{ width: "100%", height: "auto", display: "block" }} />}
+            <p style={{ fontSize: 13, color: "#666", margin: "8px 0 12px" }}>Scan to open this page</p>
+            <button type="button" onClick={() => setQr("")} style={{ background: t.btn, color: "#fff", border: "none", borderRadius: 999, padding: "10px 26px", fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

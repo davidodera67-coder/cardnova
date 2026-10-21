@@ -272,10 +272,10 @@ function Editor({ draft, setDraft, token, onBack, onSaved, initialTab }) {
               <>
                 {stat && <Note>Instant QR: the information lives inside the code itself, so it works without internet. If you change it later, download and reprint the code.</Note>}
                 {!stat && <Note kind="ok">This is a live page. Edit it any time and the same QR code and NFC tag keep working.</Note>}
-                <SolutionFields type={draft.type} data={draft.data} set={setData} token={token} />
+                <SolutionFields type={draft.type} data={draft.data} set={setData} token={token} pageSlug={draft.id ? draft.slug : ""} />
               </>
             )}
-            {!isMenu && tab === "look" && <SolutionLook design={draft.design} setDesign={setDesign} />}
+            {!isMenu && tab === "look" && <SolutionLook type={draft.type} design={draft.design} setDesign={setDesign} />}
             {tab === "share" && <SharePanel draft={draft} setDraft={setDraft} setDirty={setDirty} token={token} onSave={() => save()} saving={saving} dirty={dirty} />}
           </div>
           <div className="sx-row" style={{ marginTop: 12 }}>
@@ -456,5 +456,5 @@ export function StudioPublic({ slug }) {
     const t = resolveTokens(p.design);
     return <div className="sx" style={{ background: t.bg, minHeight: "100vh", fontSize: "inherit" }}><StudioStyles /><div style={{ maxWidth: 520, margin: "0 auto", minHeight: "100vh" }}><MenuView data={p.data} design={p.design} title={p.title} tableNo={tableNo} slug={p.slug} onOrder={onEntry} /></div></div>;
   }
-  return <div className="sx" style={{ fontSize: "inherit" }}><StudioStyles /><SolutionView type={p.type} data={p.data} design={p.design} title={p.title} onEntry={onEntry} /></div>;
+  return <div className="sx" style={{ fontSize: "inherit" }}><StudioStyles /><SolutionView type={p.type} data={p.data} design={p.design} title={p.title} slug={p.slug || slug} onEntry={onEntry} /></div>;
 }

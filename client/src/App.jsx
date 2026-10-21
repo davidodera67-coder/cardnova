@@ -3,7 +3,8 @@ import { api, toServerPayload, fromServerCard } from "./api.js";
 import QRCode from "qrcode";
 import jsPDF from "jspdf";
 import { CardView, previewActions, DesignControls, TemplatePicker, resolveDesign, buttonCss, DEFAULT_DESIGN, luminance } from "./cardDesign.jsx";
-import { Studio, StudioPublic } from "./studio.jsx";
+import { Studio, StudioPublic, pagesApi } from "./studio.jsx";
+import { MessageBoard } from "./solutions.jsx";
 import {
   Home as HomeIcon, Info, LogIn, UserPlus, LayoutDashboard, CreditCard,
   Share2, BarChart3, Users, Wallet, User, Upload, FileText, QrCode,
@@ -140,6 +141,34 @@ const inputStyle = {
 function TextInput(props) {
   return <input {...props} style={{ ...inputStyle, ...(props.style || {}) }} />;
 }
+// Lets a card show the live message board of one of the owner's Organisation pages.
+// The choice is saved inside the card's design settings (design.board = page link name).
+function BoardPicker({ card, update, token }) {
+  const [pages, setPages] = useState(null);
+  useEffect(() => {
+    let dead = false;
+    pagesApi.list(token).then(r => { if (!dead) setPages((r.pages || []).filter(p => p.type === "org" && p.status === "Published")); }).catch(() => { if (!dead) setPages([]); });
+    return () => { dead = true; };
+  }, [token]);
+  const cur = (card.design && card.design.board) || "";
+  const set = (v) => update({ design: { ...(card.design || {}), board: v } });
+  return (
+    <Field label="Show messages from your organisation page">
+      {pages === null ? <p className="text-xs" style={{ ...body, color: C.mist }}>Loading your pages…</p> : pages.length === 0 ? (
+        <p className="text-xs" style={{ ...body, color: C.mist }}>You haven't published an Organisation page yet. Create one under <b>Menus &amp; QR</b> and it will show up here.</p>
+      ) : (
+        <>
+          <select value={cur} onChange={e => set(e.target.value)} style={{ ...inputStyle }}>
+            <option value="">Don't show any messages</option>
+            {pages.map(p => <option key={p._id} value={p.slug}>{p.data?.name || p.title || p.slug}</option>)}
+          </select>
+          <span className="block text-xs mt-1.5" style={{ ...body, color: C.mist }}>This card will show a "Messages" box. Members type their access code to read messages. Edit a message once in your Organisation page and every linked card updates.</span>
+        </>
+      )}
+    </Field>
+  );
+}
+
 function TextArea(props) {
   return <textarea {...props} style={{ ...inputStyle, resize: "vertical", ...(props.style || {}) }} />;
 }
@@ -932,6 +961,7 @@ function CardWizard({ cards, setCards, editingId, onDone, token }) {
           )}
           {step === 7 && (
             <>
+              <BoardPicker card={draft} update={update} token={token} />
               <Field label="Custom URL">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-sm" style={{ ...body, color: C.mist }}>cardnova.co.ke/</span>
@@ -1963,6 +1993,12 @@ function PublicCardPage({ slug }) {
           <div className="mx-5 p-4 rounded-xl text-sm" style={{ background: "#fff", border: `1px solid ${C.line}`, ...body }}>
             {phones.map((p, i) => <div key={i} style={{ color: C.ink }}>{p}</div>)}
             {emails.map((e, i) => <div key={i} style={{ color: C.mist }}>{e}</div>)}
+          </div>
+        )}
+
+        {card.design?.board && (
+          <div className="mx-5 mt-4">
+            <MessageBoard slug={card.design.board} colors={{ muted: C.mist }} />
           </div>
         )}
 

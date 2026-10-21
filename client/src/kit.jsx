@@ -84,6 +84,7 @@ const P = {
   bolt: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
   receipt: "M4 2v20l3-2 2 2 3-2 3 2 2-2 3 2V2l-3 2-2-2-3 2-3-2-2 2z M8 8h8 M8 12h8 M8 16h5",
   bookmark: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z",
+  nav: "M3 11l19-9-9 19-2-8-8-2z",
 };
 
 export function Ic({ n, size = 18, color = "currentColor", sw = 1.8, style }) {

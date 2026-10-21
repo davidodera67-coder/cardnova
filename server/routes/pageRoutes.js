@@ -2,7 +2,7 @@ import express from "express";
 import protect from "../middleware/auth.js";
 import {
   listPages, createPage, updatePage, deletePage,
-  getPublicPage, submitEntry, listEntries, deleteEntry,
+  getPublicPage, getBoardMessages, submitEntry, listEntries, deleteEntry,
 } from "../controllers/pageController.js";
 
 const router = express.Router();
@@ -10,6 +10,7 @@ const router = express.Router();
 // Public (no login) — what a scan opens
 router.get("/public/:slug", getPublicPage);
 router.post("/public/:slug/entry", submitEntry);
+router.post("/public/:slug/messages", getBoardMessages);
 
 // Owner only
 router.get("/entries", protect, listEntries);

@@ -12,7 +12,7 @@ const SOLUTION_TYPES = new Set([
   "wifi", "text", "email", "sms", "whatsapp", "maps", "calendar", "google", "vcard", "gs1",
   "url", "smart", "video", "review", "app",
   "links", "landing", "meeting", "files", "gallery", "feedback", "form", "coupon", "event",
-  "payment", "medical", "pet", "product",
+  "payment", "medical", "pet", "product", "org",
 ]);
 
 const clean = (s, n) => String(s ?? "").slice(0, n);
@@ -45,6 +45,28 @@ function tooManyRequests(req, slug) {
   if (hits.size > 5000) hits.clear();
   return false;
 }
+
+// Organisation pages keep their message board and member codes private: the public
+// copy of the page never contains them (messages are only released by getBoardMessages).
+function publicData(page) {
+  if (page.type !== "org") return page.data;
+  const { messages, members, messagesPin, ...rest } = page.data || {};
+  return rest;
+}
+
+const codeHits = new Map();
+function tooManyCodeTries(req, slug) {
+  const ip = String(req.headers?.["x-forwarded-for"] || req.ip || "").split(",")[0].trim() || "unknown";
+  const key = `${ip}|${slug}`;
+  const now = Date.now();
+  const recent = (codeHits.get(key) || []).filter((t) => now - t < 10 * 60 * 1000);
+  if (recent.length >= 15) { codeHits.set(key, recent); return true; }
+  recent.push(now);
+  codeHits.set(key, recent);
+  if (codeHits.size > 5000) codeHits.clear();
+  return false;
+}
+const norm = (s) => String(s ?? "").trim().toLowerCase();
 
 // GET /api/pages — everything the signed-in user has made
 export async function listPages(req, res, next) {
@@ -136,7 +158,37 @@ export async function getPublicPage(req, res, next) {
       { new: true }
     );
     if (!page) return res.status(404).json({ message: "This page doesn't exist or isn't published." });
-    res.json({ kind: page.kind, type: page.type, title: page.title, slug: page.slug, data: page.data, design: page.design });
+    res.json({ kind: page.kind, type: page.type, title: page.title, slug: page.slug, data: publicData(page), design: page.design });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/pages/public/:slug/messages — the message board of an organisation page.
+// If the owner set a shared code and/or member codes, a correct code is required.
+// A member's own code also unlocks messages addressed to that member only.
+export async function getBoardMessages(req, res, next) {
+  try {
+    const slug = String(req.params.slug).toLowerCase();
+    const page = await Page.findOne({ slug, status: "Published", type: "org" });
+    if (!page) return res.status(404).json({ message: "This page doesn't exist or isn't published." });
+    const d = page.data || {};
+    const members = Array.isArray(d.members) ? d.members : [];
+    const shared = norm(d.messagesPin);
+    const needsCode = !!shared || members.some((m) => norm(m?.code));
+    const code = norm(req.body?.code);
+    let member = null;
+    if (needsCode) {
+      if (!code) return res.status(401).json({ message: "Enter your access code to read the messages.", locked: true });
+      if (tooManyCodeTries(req, slug)) return res.status(429).json({ message: "Too many tries. Please wait a few minutes and try again.", locked: true });
+      member = members.find((m) => norm(m?.code) && norm(m.code) === code) || null;
+      if (!member && !(shared && code === shared)) return res.status(403).json({ message: "That code isn't right. Check it and try again.", locked: true });
+    }
+    const messages = (Array.isArray(d.messages) ? d.messages : [])
+      .filter((m) => m && (m.title || m.body))
+      .filter((m) => m.audience !== "some" || (member && Array.isArray(m.to) && m.to.includes(member.id)))
+      .map((m) => ({ id: m.id, title: clean(m.title, 200), body: clean(m.body, 4000), at: m.at, edited: m.edited, targeted: m.audience === "some" }));
+    res.json({ title: clean(d.messagesTitle, 80) || "Latest messages", member: member ? { name: clean(member.name, 80) } : null, messages });
   } catch (err) {
     next(err);
   }
