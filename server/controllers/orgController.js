@@ -52,6 +52,8 @@ const wrap = (fn) => async (req, res, next) => {
   catch (e) { if (e?.name === "CastError") return res.status(404).json({ message: "Not found." }); next(e); }
 };
 
+// Public email flows answer at once and send in the background (no waiting, and no timing clue about which emails exist).
+const bg = (p) => { Promise.resolve(p).catch((e) => console.error("[org mail]", e?.message)); };
 async function sendResetEmail(org, member, kind = "reset") {
   const token = newToken();
   await OrgMember.updateOne({ _id: id(member) }, { resetTokenHash: sha256(token), resetExpires: new Date(Date.now() + (kind === "invite" ? 7 * 24 * 3600 : 1800) * 1000) });
@@ -121,7 +123,7 @@ export const signup = wrap(async (req, res) => {
   if (!verified) {
     const token = newToken();
     await OrgMember.updateOne({ _id: id(m) }, { verifyTokenHash: sha256(token), verifyExpires: new Date(Date.now() + 24 * 3600 * 1000) });
-    await sendMail({ to: email, subject: `Confirm your email for ${org.name}`, text: `Hello ${name},\n\nConfirm your email to finish joining ${org.name}:\n${siteOrigin()}/o/${org.slug}?verify=${token}\n\nThe link expires in 24 hours.` });
+    bg(sendMail({ to: email, subject: `Confirm your email for ${org.name}`, text: `Hello ${name},\n\nConfirm your email to finish joining ${org.name}:\n${siteOrigin()}/o/${org.slug}?verify=${token}\n\nThe link expires in 24 hours.` }));
   }
   res.status(201).json(generic);
 });
@@ -167,7 +169,7 @@ export const resendVerify = wrap(async (req, res) => {
   if (m && !m.emailVerified) {
     const token = newToken();
     await OrgMember.updateOne({ _id: id(m) }, { verifyTokenHash: sha256(token), verifyExpires: new Date(Date.now() + 24 * 3600 * 1000) });
-    await sendMail({ to: email, subject: `Confirm your email for ${org.name}`, text: `Confirm your email:\n${siteOrigin()}/o/${org.slug}?verify=${token}` });
+    bg(sendMail({ to: email, subject: `Confirm your email for ${org.name}`, text: `Confirm your email:\n${siteOrigin()}/o/${org.slug}?verify=${token}` }));
   }
   res.json(done);
 });
@@ -180,7 +182,7 @@ export const forgot = wrap(async (req, res) => {
   if (!mailReady()) return res.json({ message: "Email isn't set up for this organisation yet. Please ask an admin to give you a temporary code.", manual: true });
   if (!mailLimit(`${clientIp(req)}|${email}`) && emailOk(email)) {
     const m = await OrgMember.findOne({ org: id(org), email });
-    if (m && (m.status === "active" || m.status === "pending")) await sendResetEmail(org, m, "reset");
+    if (m && (m.status === "active" || m.status === "pending")) bg(sendResetEmail(org, m, "reset"));
   }
   res.json({ message: "If that email belongs to a member, we've sent a link to choose a new code. It works once and expires in 30 minutes." });
 });
