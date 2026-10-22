@@ -146,6 +146,9 @@ export const SOL = {
         { k: "title", label: "Heading", ph: "Meeting this Saturday" }, { k: "body", label: "Message", kind: "area", max: 4000 }, { k: "audience", kind: "audience" } ] },
       { k: "files", label: "Documents (PDF)", kind: "list", add: "Add a PDF", hint: "Upload PDFs people can open from this page — e.g. a manifesto or membership form.", sub: [{ k: "title", label: "Title", ph: "Membership form" }, { k: "url", label: "File", kind: "pdf" }] },
       { k: "contactTitle", label: "Contact box title" }, { k: "phone", label: "Phone number", kind: "tel" }, { k: "email", label: "Email", kind: "email" }, { k: "whatsapp", label: "WhatsApp number (optional)", kind: "tel" },
+      { k: "phones", label: "More phone numbers", kind: "list", add: "Add a phone number", sub: [{ k: "label", label: "Label", ph: "e.g. Office, Secretary" }, { k: "value", label: "Number", kind: "tel" }] },
+      { k: "emails", label: "More email addresses", kind: "list", add: "Add an email", sub: [{ k: "label", label: "Label", ph: "e.g. Info, Support" }, { k: "value", label: "Email", kind: "email" }] },
+      { k: "whatsapps", label: "More WhatsApp numbers", kind: "list", add: "Add a WhatsApp number", sub: [{ k: "label", label: "Label", ph: "e.g. Orders" }, { k: "value", label: "Number", kind: "tel" }] },
       { k: "address", label: "Address (also used by the Direction button)" }, { k: "dirLabel", label: "Direction button text" },
       { k: "blocks", label: "Text boxes", kind: "list", add: "Add a text box", hint: "For things like “Party's Foundational Statements”. Put each line on its own row.", sub: [
         { k: "title", label: "Heading" }, { k: "text", label: "Lines", kind: "area", max: 4000 } ] },
@@ -971,6 +974,17 @@ export function MessageBoard({ slug, preview, previewData, colors }) {
   );
 }
 
+// All phone numbers / emails / WhatsApp numbers of an organisation or member card: the main one plus any extras.
+export function orgContacts(d = {}) {
+  const pick = (main, list, mainLabel) => {
+    const out = [];
+    if (String(main || "").trim()) out.push({ label: mainLabel, value: String(main).trim() });
+    (Array.isArray(list) ? list : []).forEach(x => { if (x && String(x.value || "").trim()) out.push({ label: String(x.label || "").trim(), value: String(x.value).trim() }); });
+    return out;
+  };
+  return { phones: pick(d.phone, d.phones, ""), emails: pick(d.email, d.emails, ""), whatsapps: pick(d.whatsapp, d.whatsapps, "") };
+}
+
 // "Add to Contact" saves ONLY phone numbers, emails and links (including PDFs) — no address, role or other details.
 function makeOrgVcard(d, pageUrl) {
   const nm = String(d.name || "Contact").trim().split(/\s+/);
@@ -979,9 +993,11 @@ function makeOrgVcard(d, pageUrl) {
   return [
     "BEGIN:VCARD", "VERSION:3.0",
     `N:${vEsc(nm.slice(1).join(" "))};${vEsc(nm[0])};;;`, `FN:${vEsc(nm.join(" "))}`,
-    d.phone ? `TEL;TYPE=CELL:${tel(d.phone)}` : "",
-    d.whatsapp && tel(d.whatsapp) !== tel(d.phone || "") ? `TEL;TYPE=WORK:${tel(d.whatsapp)}` : "",
-    d.email ? `EMAIL:${vEsc(d.email)}` : "",
+    ...(() => { const c = orgContacts(d); const seen = new Set(); const out = [];
+      c.phones.forEach((x, i) => { const n = tel(x.value); if (n && !seen.has(n)) { seen.add(n); out.push(`TEL;TYPE=${i ? "WORK" : "CELL"}:${n}`); } });
+      c.whatsapps.forEach(x => { const n = tel(x.value); if (n && !seen.has(n)) { seen.add(n); out.push(`TEL;TYPE=WORK:${n}`); } });
+      c.emails.forEach(x => out.push(`EMAIL:${vEsc(x.value)}`));
+      return out; })(),
     ...[...new Set(urls)].map(u => `URL:${u}`),
     "END:VCARD",
   ].filter(Boolean).join("\r\n");
@@ -1003,8 +1019,8 @@ export function OrgView({ data: d, design, title, preview, slug, chrome = true, 
   const hasMsgs = (d.messages || []).some(m => m && (m.title || m.body));
   const showBoard = !!messagesNode || (preview ? hasMsgs : !!slug);
   const files = (d.files || []).filter(f => f && f.url);
-  const hasContact = d.phone || d.email || d.whatsapp || d.address;
-  const wa = waNumber(d.whatsapp);
+  const oc = orgContacts(d);
+  const hasContact = oc.phones.length || oc.emails.length || oc.whatsapps.length || d.address;
   const go = (id) => { setMenu(false); setTimeout(() => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60); };
 
   const saveContact = () => {
@@ -1086,9 +1102,9 @@ export function OrgView({ data: d, design, title, preview, slug, chrome = true, 
               <span style={{ width: 46, height: 46, borderRadius: "50%", background: t.btn, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic n="mobile" size={22} /></span>
               <h2 style={{ margin: 0, fontSize: 19, fontWeight: 500, color: t.title }}>{d.contactTitle || "Contact Us"}</h2>
             </div>
-            {d.phone && <a href={`tel:${String(d.phone).replace(/\s/g, "")}`} style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>Call Us</span><span style={{ fontSize: 13.5, color: t.accent }}>{d.phone}</span></a>}
-            {wa && <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>WhatsApp</span><span style={{ fontSize: 13.5, color: t.accent }}>{d.whatsapp}</span></a>}
-            {d.email && <a href={`mailto:${d.email}`} style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>Email</span><span style={{ fontSize: 13.5, color: t.accent, wordBreak: "break-all" }}>{d.email}</span></a>}
+            {oc.phones.map((x, i) => <a key={"p" + i} href={`tel:${x.value.replace(/\s/g, "")}`} style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>{x.label || "Call Us"}</span><span style={{ fontSize: 13.5, color: t.accent }}>{x.value}</span></a>)}
+            {oc.whatsapps.map((x, i) => <a key={"w" + i} href={`https://wa.me/${waNumber(x.value)}`} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>{x.label ? `WhatsApp · ${x.label}` : "WhatsApp"}</span><span style={{ fontSize: 13.5, color: t.accent }}>{x.value}</span></a>)}
+            {oc.emails.map((x, i) => <a key={"e" + i} href={`mailto:${x.value}`} style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>{x.label || "Email"}</span><span style={{ fontSize: 13.5, color: t.accent, wordBreak: "break-all" }}>{x.value}</span></a>)}
             {d.address && <p style={{ margin: "0 0 12px", fontSize: 13.5, color: t.accent }}>{d.address}</p>}
             {d.address && <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(d.address)}`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: t.btn, color: "#fff", textDecoration: "none", padding: "10px 18px", borderRadius: 999, fontSize: 14.5 }}><Ic n="nav" size={15} />{d.dirLabel || "Direction"}</a>}
           </div>

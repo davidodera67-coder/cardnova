@@ -354,6 +354,7 @@ function cleanProfile(p) {
   const o = {};
   if (isObj(p)) {
     CARD_FIELDS.forEach((k) => { if (p[k] !== undefined) o[k] = clean(p[k], k === "bio" ? 600 : k === "photo" ? 600 : 160); });
+    ["phones", "emails", "whatsapps"].forEach((k) => { o[k] = (Array.isArray(p[k]) ? p[k] : []).slice(0, 8).map((x) => ({ label: clean(x?.label, 40), value: clean(x?.value, 120) })).filter((x) => x.value); });
     o.links = (Array.isArray(p.links) ? p.links : []).slice(0, 8).map((l) => ({ title: clean(l?.title, 80), url: clean(l?.url, 400) })).filter((l) => l.title || l.url);
   }
   return o;

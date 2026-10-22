@@ -2,8 +2,9 @@
 // Members sign up with a join code, wait for admin approval, then sign in with a code they chose themselves.
 // Three admin levels: 1 Messenger · 2 Manager · 3 Owner. Everything talks to /api/org.
 import React, { useState, useEffect, useMemo } from "react";
-import { Ic, K, StudioStyles, Btn, Fld, Chips, Toggle, Note, Spinner, CopyBtn, NfcPanel, uid, downloadText, safeUrl, waNumber } from "./kit.jsx";
-import { OrgView, OrgLook, orgTokens, FieldsEditor, makeOrgVcard, SOL } from "./solutions.jsx";
+import { Ic, K, StudioStyles, Btn, Fld, Chips, Toggle, Note, Spinner, CopyBtn, NfcPanel, uid, downloadText, safeUrl, waNumber, qrDataUrl, DEFAULT_QR } from "./kit.jsx";
+import { PhoneFrame } from "./menu.jsx";
+import { OrgView, OrgLook, orgTokens, orgContacts, FieldsEditor, makeOrgVcard, SOL } from "./solutions.jsx";
 
 /* ------------------------------------------------------------------ api */
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -48,7 +49,7 @@ function Shell({ info, children, wide }) {
   return (
     <div className="sx" style={{ minHeight: "100vh", background: `linear-gradient(170deg, ${t.bg1}, ${t.bg2})`, padding: "20px 14px 40px" }}>
       <StudioStyles />
-      <div style={{ maxWidth: wide ? 760 : 440, margin: "0 auto" }}>{children}</div>
+      <div style={{ maxWidth: wide ? 1040 : 440, margin: "0 auto" }}>{children}</div>
     </div>
   );
 }
@@ -252,6 +253,30 @@ function PortalMessages({ messages, t }) {
   );
 }
 
+/* ------------------------------------------- shared: QR, preview */
+function QrBox({ value, name, size = 150 }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => { let dead = false; qrDataUrl(value, { ...DEFAULT_QR, frame: "none" }, null).then(r => { if (!dead) setUrl(r.url); }).catch(() => {}); return () => { dead = true; }; }, [value]);
+  return (
+    <div style={{ textAlign: "center" }}>
+      {url ? <img src={url} alt="QR code" style={{ width: size, height: size, background: "#fff", borderRadius: 8, border: "1px solid #ddd" }} /> : <Spinner />}
+      <div style={{ marginTop: 6 }}><Btn size="sm" kind="soft" icon="download" disabled={!url} onClick={() => { const a = document.createElement("a"); a.href = url; a.download = `${name || "qr"}.png`; a.click(); }}>Download QR</Btn></div>
+    </div>
+  );
+}
+// Editor on the left, live preview on the right (drops below on a phone).
+function WithPreview({ label = "Live preview", preview, children }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 18, alignItems: "flex-start" }}>
+      <div style={{ flex: "1 1 340px", minWidth: 0 }}>{children}</div>
+      <div style={{ flex: "0 0 300px", maxWidth: "100%", position: "sticky", top: 8, margin: "0 auto" }}>
+        <p className="sx-mut" style={{ textAlign: "center", marginBottom: 6, fontWeight: 600 }}>{label}</p>
+        <PhoneFrame>{preview}</PhoneFrame>
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------ small helpers */
 const Empty = ({ children }) => <p className="sx-mut" style={{ padding: "14px 0" }}>{children}</p>;
 function useAct() {
@@ -373,36 +398,85 @@ function MembersAdmin({ api, me, slug, onChanged }) {
 }
 
 /* -------------------------------------------------------------- cards */
-function CardEditor({ card, members, onSave, onCancel }) {
-  const [f, setF] = useState({ label: card?.label || "", memberId: card?.member || "", profile: { links: [], ...(card?.profile || {}) } });
+// The member card as a visitor sees it (used on /c/<token> and in the editor preview).
+function CardFace({ org, card, preview }) {
+  const t = orgTokens(org.design);
+  const c = orgContacts(card);
+  const links = (card.links || []).filter(l => safeUrl(l.url));
+  const vcf = () => downloadText(makeOrgVcard({ name: card.name, phone: card.phone, email: card.email, whatsapp: card.whatsapp, phones: card.phones, emails: card.emails, whatsapps: card.whatsapps, links: [...(card.website ? [{ url: card.website }] : []), ...(card.links || [])] }, ""), `${(card.name || "contact").replace(/\s+/g, "_")}.vcf`, "text/vcard");
+  const A = ({ href, soft, children }) => <a className={`sx-btn ${soft ? "soft" : ""}`} href={preview ? undefined : href} onClick={preview ? e => e.preventDefault() : undefined}>{children}</a>;
+  return (
+    <div style={{ background: t.card, borderRadius: 16, padding: 20, textAlign: "center", color: "#333", boxShadow: "0 8px 30px rgba(0,0,0,.25)" }}>
+      {card.photo && safeUrl(card.photo) && <img src={card.photo} alt="" style={{ width: 90, height: 90, borderRadius: "50%", objectFit: "cover", margin: "0 auto 8px", display: "block" }} />}
+      <h2 style={{ fontSize: 21, fontWeight: 700, color: t.title }}>{card.name || (preview ? "Member name" : "")}</h2>
+      {(card.title || card.company) && <p style={{ color: t.accent, fontWeight: 600 }}>{[card.title, card.company].filter(Boolean).join(" · ")}</p>}
+      {card.bio && <p style={{ marginTop: 8, fontSize: 14, whiteSpace: "pre-wrap" }}>{card.bio}</p>}
+      <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+        {c.phones.map((x, i) => <A key={"p" + i} href={`tel:${x.value.replace(/\s/g, "")}`}>Call {x.label ? `${x.label}: ` : ""}{x.value}</A>)}
+        {c.whatsapps.map((x, i) => <A key={"w" + i} href={`https://wa.me/${waNumber(x.value)}`}>WhatsApp{x.label ? ` ${x.label}` : ""}: {x.value}</A>)}
+        {c.emails.map((x, i) => <A key={"e" + i} href={`mailto:${x.value}`}>{x.label ? `${x.label}: ` : ""}{x.value}</A>)}
+        {card.website && safeUrl(card.website) && <A soft href={card.website}>Website</A>}
+        {links.map((l, i) => <A key={i} soft href={l.url}>{l.title || l.url}</A>)}
+        <button type="button" className="sx-btn dark" onClick={preview ? undefined : vcf}>Save contact</button>
+      </div>
+    </div>
+  );
+}
+
+// Add-as-many-as-you-like rows: label + value.
+function MultiList({ title, kind, items, onChange, add, ph }) {
+  const list = items || [];
+  const set = (i, k, v) => onChange(list.map((x, j) => j === i ? { ...x, [k]: v } : x));
+  return (
+    <Fld label={title}>
+      {list.map((x, i) => (
+        <div key={i} className="sx-row" style={{ marginBottom: 6 }}>
+          <input placeholder="Label (optional)" value={x.label || ""} onChange={e => set(i, "label", e.target.value)} style={{ maxWidth: 130 }} />
+          <input type={kind} placeholder={ph} value={x.value || ""} onChange={e => set(i, "value", e.target.value)} />
+          <Btn size="sm" kind="danger" icon="x" onClick={() => onChange(list.filter((_, j) => j !== i))} />
+        </div>
+      ))}
+      {list.length < 8 && <Btn size="sm" kind="soft" icon="plus" onClick={() => onChange([...list, { label: "", value: "" }])}>{add}</Btn>}
+    </Fld>
+  );
+}
+
+function CardEditor({ card, members, org, onSave, onCancel }) {
+  const [f, setF] = useState({ label: card?.label || "", memberId: card?.member || "", profile: { links: [], phones: [], emails: [], whatsapps: [], ...(card?.profile || {}) } });
   const p = f.profile, setP = (k, v) => setF({ ...f, profile: { ...p, [k]: v } });
   const pickMember = (id) => { const m = members.find(x => x.id === id); setF({ ...f, memberId: id, label: f.label || m?.name || "", profile: { ...p, name: p.name || m?.name || "", phone: p.phone || m?.phone || "", email: p.email || m?.email || "" } }); };
   const links = p.links || [];
+  const ot = orgTokens(org.design);
   return (
     <div className="sx-card" style={{ marginBottom: 12 }}>
       <h3 className="sx-h3">{card ? "Edit card" : "New card"}</h3>
-      <Fld label="Belongs to member"><select value={f.memberId} onChange={e => pickMember(e.target.value)}><option value="">— nobody yet —</option>{members.filter(m => m.status === "active").map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></Fld>
-      <Fld label="Card label (only admins see this)"><input value={f.label} onChange={e => setF({ ...f, label: e.target.value })} placeholder="e.g. Jane – spare card" /></Fld>
-      <div className="sx-two">
-        <Fld label="Name on card"><input value={p.name || ""} onChange={e => setP("name", e.target.value)} /></Fld>
-        <Fld label="Job title"><input value={p.title || ""} onChange={e => setP("title", e.target.value)} /></Fld>
-        <Fld label="Phone"><input type="tel" value={p.phone || ""} onChange={e => setP("phone", e.target.value)} /></Fld>
-        <Fld label="Email"><input type="email" value={p.email || ""} onChange={e => setP("email", e.target.value)} /></Fld>
-        <Fld label="WhatsApp"><input type="tel" value={p.whatsapp || ""} onChange={e => setP("whatsapp", e.target.value)} /></Fld>
-        <Fld label="Website"><input value={p.website || ""} onChange={e => setP("website", e.target.value)} /></Fld>
-      </div>
-      <Fld label="Short bio"><textarea rows={3} maxLength={600} value={p.bio || ""} onChange={e => setP("bio", e.target.value)} /></Fld>
-      <Fld label="Links">
-        {links.map((l, i) => (
-          <div key={i} className="sx-row" style={{ marginBottom: 6 }}>
-            <input placeholder="Title" value={l.title} onChange={e => setP("links", links.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} />
-            <input placeholder="https://…" value={l.url} onChange={e => setP("links", links.map((x, j) => j === i ? { ...x, url: e.target.value } : x))} />
-            <Btn size="sm" kind="danger" icon="x" onClick={() => setP("links", links.filter((_, j) => j !== i))} />
-          </div>
-        ))}
-        {links.length < 8 && <Btn size="sm" kind="soft" icon="plus" onClick={() => setP("links", [...links, { title: "", url: "" }])}>Add link</Btn>}
-      </Fld>
-      <div className="sx-row"><Btn onClick={() => onSave(f)}>{card ? "Save card" : "Create card"}</Btn><Btn kind="soft" onClick={onCancel}>Cancel</Btn></div>
+      <WithPreview label="What the card will show" preview={<div style={{ background: `linear-gradient(170deg, ${ot.bg1}, ${ot.bg2})`, minHeight: "100%", padding: 14 }}><CardFace org={org} card={p} preview /></div>}>
+        <Fld label="Belongs to member"><select value={f.memberId} onChange={e => pickMember(e.target.value)}><option value="">— nobody yet —</option>{members.filter(m => m.status === "active").map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></Fld>
+        <Fld label="Card label (only admins see this)"><input value={f.label} onChange={e => setF({ ...f, label: e.target.value })} placeholder="e.g. Jane – spare card" /></Fld>
+        <div className="sx-two">
+          <Fld label="Name on card"><input value={p.name || ""} onChange={e => setP("name", e.target.value)} /></Fld>
+          <Fld label="Job title"><input value={p.title || ""} onChange={e => setP("title", e.target.value)} /></Fld>
+          <Fld label="Main phone"><input type="tel" value={p.phone || ""} onChange={e => setP("phone", e.target.value)} /></Fld>
+          <Fld label="Main email"><input type="email" value={p.email || ""} onChange={e => setP("email", e.target.value)} /></Fld>
+          <Fld label="Main WhatsApp"><input type="tel" value={p.whatsapp || ""} onChange={e => setP("whatsapp", e.target.value)} /></Fld>
+          <Fld label="Website"><input value={p.website || ""} onChange={e => setP("website", e.target.value)} /></Fld>
+        </div>
+        <MultiList title="More phone numbers" kind="tel" ph="0712 345 678" add="Add a phone number" items={p.phones} onChange={v => setP("phones", v)} />
+        <MultiList title="More emails" kind="email" ph="name@example.com" add="Add an email" items={p.emails} onChange={v => setP("emails", v)} />
+        <MultiList title="More WhatsApp numbers" kind="tel" ph="0712 345 678" add="Add a WhatsApp number" items={p.whatsapps} onChange={v => setP("whatsapps", v)} />
+        <Fld label="Short bio"><textarea rows={3} maxLength={600} value={p.bio || ""} onChange={e => setP("bio", e.target.value)} /></Fld>
+        <Fld label="Links">
+          {links.map((l, i) => (
+            <div key={i} className="sx-row" style={{ marginBottom: 6 }}>
+              <input placeholder="Title" value={l.title} onChange={e => setP("links", links.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} />
+              <input placeholder="https://…" value={l.url} onChange={e => setP("links", links.map((x, j) => j === i ? { ...x, url: e.target.value } : x))} />
+              <Btn size="sm" kind="danger" icon="x" onClick={() => setP("links", links.filter((_, j) => j !== i))} />
+            </div>
+          ))}
+          {links.length < 8 && <Btn size="sm" kind="soft" icon="plus" onClick={() => setP("links", [...links, { title: "", url: "" }])}>Add link</Btn>}
+        </Fld>
+        <div className="sx-row"><Btn onClick={() => onSave(f)}>{card ? "Save card" : "Create card"}</Btn><Btn kind="soft" onClick={onCancel}>Cancel</Btn></div>
+      </WithPreview>
     </div>
   );
 }
@@ -432,7 +506,7 @@ function CardsAdmin({ api, me }) {
         {!edit && <Btn icon="plus" onClick={() => setEdit("new")}>New card</Btn>}
         <input placeholder="Search cards…" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 220 }} />
       </div>
-      {edit && <CardEditor card={edit === "new" ? null : edit} members={members} onSave={save} onCancel={() => setEdit(null)} />}
+      {edit && <CardEditor card={edit === "new" ? null : edit} members={members} org={{ name: me.org.name, design: me.org.design }} onSave={save} onCancel={() => setEdit(null)} />}
       {shown.length === 0 && <Empty>No cards yet.</Empty>}
       {shown.map(c => (
         <div key={c.id} className="sx-card" style={{ marginTop: 8, borderColor: c.status === "deactivated" ? "#e0a0a0" : undefined }}>
@@ -450,7 +524,7 @@ function CardsAdmin({ api, me }) {
           {open === c.id && (
             <div style={{ marginTop: 10 }}>
               <div className="sx-row"><input readOnly value={c.link} onFocus={e => e.target.select()} /><CopyBtn text={c.link} /></div>
-              <div style={{ marginTop: 8 }}><NfcPanel url={c.link} /></div>
+              <div className="sx-row sx-wrap" style={{ marginTop: 10, alignItems: "flex-start", gap: 16 }}><QrBox value={c.link} name={`card-${(c.label || "member").replace(/\s+/g, "-")}`} size={130} /><div className="sx-grow" style={{ minWidth: 220 }}><NfcPanel url={c.link} /></div></div>
               <div className="sx-row sx-wrap" style={{ marginTop: 8 }}>
                 <Btn size="sm" kind="soft" onClick={() => doit(async () => { const r = await api.post(`admin/cards/${c.id}/reissue`); setOpen(c.id); window.alert(`New link:\n${r.link}\n\nWrite it onto the replacement tag.`); return r; }, "New link created. The old link now shows “card replaced”.", "Create a new link for a replacement tag? The old link stops working.")}>Replace tag (new link)</Btn>
                 {lv >= 3 && <Btn size="sm" kind="danger" icon="trash" onClick={() => doit(() => api.del(`admin/cards/${c.id}`), "Card deleted.", "Delete this card for good?")}>Delete</Btn>}
@@ -571,12 +645,22 @@ export function OrgSettings({ slug, orgToken, cnToken, onSaved }) {
   const newCode = async () => { if (!window.confirm("Make a new join code? The old one stops working for new sign-ups.")) return; const r = await act(() => api.post("admin/join-code"), "New join code created."); if (r) setD({ ...d, joinCode: r.joinCode }); };
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const invite = `Join ${d.name} on CardNova: ${origin}/o/${slug}\nJoin code: ${d.joinCode}`;
+  const memberUrl = `${origin}/o/${slug}`;
+  const pagePreview = <OrgView data={{ ...d.profile, name: d.name }} design={d.design} title={d.name} preview chrome={false} messagesNode={<PortalMessages messages={[{ id: "s", title: "Example message", body: "Your messages appear here.", at: new Date().toISOString(), author: "Admin" }]} t={orgTokens(d.design)} />} />;
   return (
-    <div>
+    <WithPreview label="Live preview of your members' page" preview={pagePreview}>
       <Msg m={msg} />
-      <div className="sx-card"><h3 className="sx-h3">Organisation</h3>
+      <div className="sx-card"><h3 className="sx-h3">Members' page link &amp; QR</h3>
+        <div className="sx-row sx-wrap" style={{ alignItems: "flex-start", gap: 16 }}>
+          <QrBox value={memberUrl} name={`${slug}-members`} />
+          <div className="sx-grow" style={{ minWidth: 200 }}>
+            <p className="sx-mut" style={{ marginBottom: 6 }}>Members sign in or join here. Put this QR on posters, forms or ID cards.</p>
+            <div className="sx-row"><input readOnly value={memberUrl} onFocus={e => e.target.select()} /><CopyBtn text={memberUrl} /></div>
+          </div>
+        </div>
+      </div>
+      <div className="sx-card" style={{ marginTop: 12 }}><h3 className="sx-h3">Organisation</h3>
         <Fld label="Organisation name" hint="Saved together with everything below when you press Save."><input value={d.name} onChange={e => setD({ ...d, name: e.target.value })} /></Fld>
-        <p className="sx-mut" style={{ fontSize: 13 }}>Members' link: <b>{origin}/o/{slug}</b> <CopyBtn text={`${origin}/o/${slug}`} /></p>
       </div>
       <div className="sx-card" style={{ marginTop: 12 }}><h3 className="sx-h3">Join code</h3>
         <p style={{ fontSize: 22, fontWeight: 700, letterSpacing: 3 }}>{d.joinCode}</p>
@@ -594,7 +678,7 @@ export function OrgSettings({ slug, orgToken, cnToken, onSaved }) {
         <FieldsEditor fields={fields} data={d.profile} set={v => setD({ ...d, profile: v })} token={cnToken} canUpload={!!cnToken} />
       </div>
       <div style={{ position: "sticky", bottom: 0, background: "#fff", padding: "10px 0", marginTop: 12 }}><Btn onClick={save}>Save everything</Btn></div>
-    </div>
+    </WithPreview>
   );
 }
 
@@ -641,25 +725,10 @@ export function CardPage({ token }) {
       </Shell>
     );
   }
-  const links = (card.links || []).filter(l => safeUrl(l.url));
-  const vcf = () => downloadText(makeOrgVcard({ name: card.name, phone: card.phone, email: card.email, whatsapp: card.whatsapp, links: [...(card.website ? [{ url: card.website }] : []), ...(card.links || [])] }, ""), `${(card.name || "contact").replace(/\s+/g, "_")}.vcf`, "text/vcard");
   return (
     <Shell info={org}>
       <Brand info={{ name: org.name, logo: org.logo, design: org.design }} />
-      <div style={{ background: t.card, borderRadius: 16, padding: 20, textAlign: "center", color: "#333", boxShadow: "0 8px 30px rgba(0,0,0,.25)" }}>
-        {card.photo && safeUrl(card.photo) && <img src={card.photo} alt="" style={{ width: 90, height: 90, borderRadius: "50%", objectFit: "cover", margin: "0 auto 8px", display: "block" }} />}
-        <h2 style={{ fontSize: 21, fontWeight: 700, color: t.title }}>{card.name}</h2>
-        {(card.title || card.company) && <p style={{ color: t.accent, fontWeight: 600 }}>{[card.title, card.company].filter(Boolean).join(" · ")}</p>}
-        {card.bio && <p style={{ marginTop: 8, fontSize: 14, whiteSpace: "pre-wrap" }}>{card.bio}</p>}
-        <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
-          {card.phone && <a className="sx-btn" href={`tel:${card.phone}`}>Call {card.phone}</a>}
-          {card.whatsapp && <a className="sx-btn" href={`https://wa.me/${waNumber(card.whatsapp)}`}>WhatsApp</a>}
-          {card.email && <a className="sx-btn" href={`mailto:${card.email}`}>{card.email}</a>}
-          {card.website && safeUrl(card.website) && <a className="sx-btn soft" href={card.website}>Website</a>}
-          {links.map((l, i) => <a key={i} className="sx-btn soft" href={l.url}>{l.title || l.url}</a>)}
-          <button type="button" className="sx-btn dark" onClick={vcf}>Save contact</button>
-        </div>
-      </div>
+      <CardFace org={org} card={card} />
       <LocBox />
       <p style={{ textAlign: "center", marginTop: 12 }}><a href={`/o/${org.slug}`} style={{ color: "#fff", textDecoration: "underline", fontSize: 13 }}>Members' area</a></p>
       <Foot />
