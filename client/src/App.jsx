@@ -5,6 +5,7 @@ import jsPDF from "jspdf";
 import { CardView, previewActions, DesignControls, TemplatePicker, resolveDesign, buttonCss, DEFAULT_DESIGN, luminance } from "./cardDesign.jsx";
 import { Studio, StudioPublic, pagesApi } from "./studio.jsx";
 import { MessageBoard } from "./solutions.jsx";
+import { OrgPortal, CardPage } from "./org.jsx";
 import {
   Home as HomeIcon, Info, LogIn, UserPlus, LayoutDashboard, CreditCard,
   Share2, BarChart3, Users, Wallet, User, Upload, FileText, QrCode,
@@ -2081,6 +2082,8 @@ export default function App() {
   if (/^p\/[^/]+\/?$/.test(pathname)) {
     return <StudioPublic slug={decodeURIComponent(pathname.slice(2).replace(/\/$/, ""))} />;
   }
+  if (/^o\/[^/]+\/?$/.test(pathname)) return <OrgPortal slug={decodeURIComponent(pathname.slice(2).replace(/\/$/, ""))} />;
+  if (/^c\/[^/]+\/?$/.test(pathname)) return <CardPage token={decodeURIComponent(pathname.slice(2).replace(/\/$/, ""))} />;
   if (pathname && !KNOWN_PAGES.includes(pathname)) {
     return <PublicCardPage slug={pathname} />;
   }

@@ -9,10 +9,12 @@ import cardRoutes from "./routes/cardRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import pageRoutes from "./routes/pageRoutes.js";
+import orgRoutes from "./routes/orgRoutes.js";
 
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1); // so rate limits and card-tap tracking see the real visitor address behind Render
 
 // --- Core middleware ---
 app.use(express.json({ limit: "2mb" })); // menus with many items can be a few hundred KB
@@ -37,6 +39,7 @@ app.use("/api/cards", cardRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/pages", pageRoutes);        // Menus & QR pages
+app.use("/api/org", orgRoutes);           // Organisation member portals
 
 // --- 404 fallback ---
 app.use((req, res) => {

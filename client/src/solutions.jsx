@@ -309,6 +309,7 @@ export const CHOOSER_CATS = [
   { id: "connect", label: "Connect" }, { id: "media", label: "Files & media" }, { id: "events", label: "Events" }, { id: "safety", label: "Safety & ID" },
 ];
 
+export { makeOrgVcard };
 export const isStatic = (type) => SOL[type]?.mode === "static";
 export function staticPayload(type, data) { try { return SOL[type].payload(data); } catch { return ""; } }
 export function solutionReady(type, data) {
@@ -390,6 +391,21 @@ function stampMessages(old = [], next = []) {
     if ((o.title !== r.title || o.body !== r.body) && o.at && now - new Date(o.at) > 600000) return { ...r, edited: now.toISOString() };
     return r;
   });
+}
+
+// Generic field editor used by the organisation portal settings.
+export function FieldsEditor({ fields, data, set, token, canUpload = true }) {
+  const noUp = (f) => (!canUpload && (f.kind === "image" || f.kind === "pdf")) ? { ...f, kind: undefined, ph: "Paste a link to the file" } : f;
+  return (
+    <div>
+      {fields.map(f0 => {
+        const f = noUp(f0);
+        if (f.show && !f.show(data)) return null;
+        if (f.kind === "list") return <ListField key={f.k} f={{ ...f, sub: f.sub.map(noUp) }} items={data[f.k]} token={token} root={data} onChange={v => set({ ...data, [f.k]: v })} />;
+        return <SubField key={f.k} f={f} row={data} val={data[f.k]} token={token} onChange={v => set({ ...data, [f.k]: v })} />;
+      })}
+    </div>
+  );
 }
 
 export function SolutionFields({ type, data, set, token, pageSlug }) {
@@ -813,39 +829,50 @@ export function SolutionView({ type, data, design, title, onEntry, preview, slug
 const Preview1 = ({ t, text }) => <div style={{ textAlign: "center", paddingTop: 50, color: t.muted }}><Ic n="link" size={28} /><p style={{ marginTop: 10 }}>{text}</p><p style={{ fontSize: 12, marginTop: 8 }}>Visitors see a quick “Opening…” screen, then land on your link.</p></div>;
 
 /* ======================================================= organisation page */
-const ORG_LOOKS = {
-  royal: { name: "Royal blue & gold", bg1: "#0b4fc4", bg2: "#031c58", swoosh: "#c9a227", swoosh2: "#9db9f2", card: "#ffffff", title: "#0b1f4b", accent: "#a8870f", btn: "#0b1220" },
-  navy: { name: "Navy & silver", bg1: "#1c2b4d", bg2: "#0a1226", swoosh: "#aab4c8", swoosh2: "#5b6d96", card: "#ffffff", title: "#0a1226", accent: "#516088", btn: "#0a1226" },
-  green: { name: "Green & gold", bg1: "#0f7a3d", bg2: "#043a1c", swoosh: "#e2b93b", swoosh2: "#8fd6a9", card: "#ffffff", title: "#063a1b", accent: "#9a7b0a", btn: "#06210f" },
-  maroon: { name: "Maroon & gold", bg1: "#8a1c2b", bg2: "#3d0711", swoosh: "#d4a937", swoosh2: "#e7a0aa", card: "#ffffff", title: "#3d0711", accent: "#9a7410", btn: "#1b0307" },
-  black: { name: "Black & gold", bg1: "#222222", bg2: "#050505", swoosh: "#d4af37", swoosh2: "#666666", card: "#ffffff", title: "#111111", accent: "#9c7c14", btn: "#000000" },
-  light: { name: "Clean white", bg1: "#f4f6fb", bg2: "#dfe5f3", swoosh: "#7c5cfc", swoosh2: "#c9bdfc", card: "#ffffff", title: "#14112c", accent: "#6b4fe0", btn: "#14112c" },
-};
+export const ORG_TEMPLATES = [
+  { id: "t01", name: "Royal blue & gold", bg1: "#0b4fc4", bg2: "#031c58", swoosh: "#c9a227", swoosh2: "#9db9f2", card: "#ffffff", title: "#0b1f4b", accent: "#a8870f", btn: "#0b1220", header: "center", links: "card", deco: "bands" },
+  { id: "t02", name: "Navy & silver", bg1: "#1c2b4d", bg2: "#0a1226", swoosh: "#aab4c8", swoosh2: "#5b6d96", card: "#ffffff", title: "#0a1226", accent: "#516088", btn: "#0a1226", header: "left", links: "card", deco: "bands" },
+  { id: "t03", name: "Green & gold", bg1: "#0f7a3d", bg2: "#043a1c", swoosh: "#e2b93b", swoosh2: "#8fd6a9", card: "#ffffff", title: "#063a1b", accent: "#9a7b0a", btn: "#06210f", header: "center", links: "card", deco: "wave" },
+  { id: "t04", name: "Maroon & gold", bg1: "#8a1c2b", bg2: "#3d0711", swoosh: "#d4a937", swoosh2: "#e7a0aa", card: "#ffffff", title: "#3d0711", accent: "#9a7410", btn: "#1b0307", header: "center", links: "pill", deco: "bands" },
+  { id: "t05", name: "Black & gold", bg1: "#262626", bg2: "#050505", swoosh: "#d4af37", swoosh2: "#666666", card: "#ffffff", title: "#111111", accent: "#9c7c14", btn: "#000000", header: "left", links: "card", deco: "lines" },
+  { id: "t06", name: "Clean white", bg1: "#f4f6fb", bg2: "#dfe5f3", swoosh: "#7c5cfc", swoosh2: "#c9bdfc", card: "#ffffff", title: "#14112c", accent: "#6b4fe0", btn: "#14112c", header: "center", links: "pill", deco: "none" },
+  { id: "t07", name: "Sunrise orange", bg1: "#f97316", bg2: "#9a3412", swoosh: "#fde047", swoosh2: "#fed7aa", card: "#ffffff", title: "#7c2d12", accent: "#c2410c", btn: "#431407", header: "center", links: "tile", deco: "wave" },
+  { id: "t08", name: "Ocean teal", bg1: "#0d9488", bg2: "#134e4a", swoosh: "#5eead4", swoosh2: "#99f6e4", card: "#ffffff", title: "#134e4a", accent: "#0f766e", btn: "#042f2e", header: "left", links: "tile", deco: "wave" },
+  { id: "t09", name: "Purple night", bg1: "#6d28d9", bg2: "#1e1b4b", swoosh: "#f0abfc", swoosh2: "#a78bfa", card: "#ffffff", title: "#2e1065", accent: "#7e22ce", btn: "#1e1b4b", header: "center", links: "card", deco: "circles" },
+  { id: "t10", name: "Rose red", bg1: "#e11d48", bg2: "#4c0519", swoosh: "#fda4af", swoosh2: "#fecdd3", card: "#ffffff", title: "#4c0519", accent: "#be123c", btn: "#4c0519", header: "left", links: "pill", deco: "bands" },
+];
+const ORG_LEGACY = { royal: "t01", navy: "t02", green: "t03", maroon: "t04", black: "t05", light: "t06" };
 export function orgTokens(design = {}) {
-  const base = ORG_LOOKS[design.orgLook] || ORG_LOOKS.royal;
+  const id = design.tpl || ORG_LEGACY[design.orgLook] || "t01";
+  const base = ORG_TEMPLATES.find(x => x.id === id) || ORG_TEMPLATES[0];
   return { ...base, ...(design.org || {}) };
 }
 const orgOnDark = (t) => { const m = /^#?([0-9a-f]{6})$/i.exec(t.bg2 || ""); const v = m ? parseInt(m[1], 16) : 0; return (((v >> 16) & 255) * 299 + ((v >> 8) & 255) * 587 + (v & 255) * 114) / 1000 < 150; };
 
-function OrgLook({ design, setDesign }) {
+export function OrgLook({ design, setDesign }) {
   const t = orgTokens(design);
-  const pick = (k) => setDesign({ ...design, orgLook: k, org: {} });
+  const cur = design.tpl || ORG_LEGACY[design.orgLook] || "t01";
+  const pick = (k) => setDesign({ ...design, tpl: k, orgLook: undefined, org: {} });
   const up = (o) => setDesign({ ...design, org: { ...(design.org || {}), ...o } });
   const C = ({ k, label }) => <label className="sx-row" style={{ marginBottom: 8, cursor: "pointer" }}><input type="color" value={t[k]} onChange={e => up({ [k]: e.target.value })} style={{ width: 38, height: 30, padding: 0, border: "none", background: "none" }} /><span style={{ fontSize: 13 }}>{label}</span></label>;
   return (
     <div>
-      <Fld label="Colour set" hint="Start from a set, then fine-tune any colour below.">
-        <div className="sx-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-          {Object.entries(ORG_LOOKS).map(([k, v]) => (
-            <button key={k} type="button" onClick={() => pick(k)} style={{ border: `2px solid ${(design.orgLook || "royal") === k ? K.violet : K.line}`, borderRadius: 10, padding: 4, background: "#fff" }}>
-              <div style={{ background: `linear-gradient(160deg, ${v.bg1}, ${v.bg2})`, borderRadius: 6, height: 40, position: "relative", overflow: "hidden" }}><div style={{ position: "absolute", left: -6, right: -6, bottom: 4, height: 8, background: v.swoosh, transform: "rotate(-14deg)" }} /></div>
-              <div style={{ fontSize: 10, marginTop: 3 }}>{v.name}</div>
+      <Fld label="Page template" hint="10 designs. Pick one, then fine-tune the colours below if you like.">
+        <div className="sx-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+          {ORG_TEMPLATES.map(v => (
+            <button key={v.id} type="button" aria-label={v.name} title={v.name} onClick={() => pick(v.id)} style={{ border: `2px solid ${cur === v.id ? K.violet : K.line}`, borderRadius: 10, padding: 3, background: "#fff" }}>
+              <div style={{ background: `linear-gradient(160deg, ${v.bg1}, ${v.bg2})`, borderRadius: 6, height: 58, position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", left: v.header === "left" ? 5 : "50%", top: 5, width: 14, height: 14, borderRadius: "50%", background: "#fff", transform: v.header === "left" ? "none" : "translateX(-50%)" }} />
+                <div style={{ position: "absolute", left: 5, right: 5, top: 24, height: v.links === "tile" ? 14 : 8, borderRadius: v.links === "pill" ? 6 : 2, background: "#fff", opacity: .95 }} />
+                <div style={{ position: "absolute", left: -6, right: -6, bottom: 4, height: 6, background: v.swoosh, transform: "rotate(-14deg)" }} />
+              </div>
+              <div style={{ fontSize: 9, marginTop: 2, lineHeight: 1.1 }}>{v.name}</div>
             </button>
           ))}
         </div>
       </Fld>
       <Fld label="Fine-tune">
-        <C k="bg1" label="Background (top)" /><C k="bg2" label="Background (bottom)" /><C k="swoosh" label="Gold stripe" /><C k="swoosh2" label="Light stripe" />
+        <C k="bg1" label="Background (top)" /><C k="bg2" label="Background (bottom)" /><C k="swoosh" label="Main stripe" /><C k="swoosh2" label="Light stripe" />
         <C k="title" label="Card headings" /><C k="accent" label="Small text & prices" /><C k="btn" label="Buttons" />
       </Fld>
     </div>
@@ -960,7 +987,7 @@ function makeOrgVcard(d, pageUrl) {
   ].filter(Boolean).join("\r\n");
 }
 
-function OrgView({ data: d, design, title, preview, slug }) {
+export function OrgView({ data: d, design, title, preview, slug, chrome = true, messagesNode }) {
   const t = orgTokens(design);
   useFonts(["Roboto"]);
   const [menu, setMenu] = useState(false);
@@ -974,7 +1001,7 @@ function OrgView({ data: d, design, title, preview, slug }) {
   const links = (d.links || []).filter(l => l && (l.title || l.url));
   const blocks = (d.blocks || []).filter(b => b && (b.title || b.text));
   const hasMsgs = (d.messages || []).some(m => m && (m.title || m.body));
-  const showBoard = preview ? hasMsgs : !!slug;
+  const showBoard = !!messagesNode || (preview ? hasMsgs : !!slug);
   const files = (d.files || []).filter(f => f && f.url);
   const hasContact = d.phone || d.email || d.whatsapp || d.address;
   const wa = waNumber(d.whatsapp);
@@ -1000,15 +1027,21 @@ function OrgView({ data: d, design, title, preview, slug }) {
     ...blocks.map((b, i) => b.title && [`org-b-${i}`, b.title]),
   ].filter(Boolean);
 
+  const left = t.header === "left";
+  const deco = t.deco || "bands";
   return (
-    <div style={{ position: "relative", minHeight: preview ? "100%" : "100vh", background: `linear-gradient(170deg, ${t.bg1} 0%, ${t.bg2} 100%)`, fontFamily: "Roboto, Inter, system-ui, sans-serif", color: onBg }}>
-      <svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, width: "100%", height: 420, pointerEvents: "none" }}>
-        <polygon points="0,26 100,62 100,68 0,32" fill={t.swoosh2} opacity=".55" />
-        <polygon points="0,42 100,78 100,90 0,54" fill={t.swoosh} />
-      </svg>
+    <div style={{ position: "relative", minHeight: !chrome ? 0 : preview ? "100%" : "100vh", borderRadius: chrome ? 0 : 16, overflow: chrome ? "visible" : "hidden", background: `linear-gradient(170deg, ${t.bg1} 0%, ${t.bg2} 100%)`, fontFamily: "Roboto, Inter, system-ui, sans-serif", color: onBg }}>
+      {deco !== "none" && (
+        <svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, width: "100%", height: 420, pointerEvents: "none" }}>
+          {deco === "bands" && <><polygon points="0,26 100,62 100,68 0,32" fill={t.swoosh2} opacity=".55" /><polygon points="0,42 100,78 100,90 0,54" fill={t.swoosh} /></>}
+          {deco === "wave" && <><path d="M0,60 C25,40 50,80 100,48 L100,100 L0,100 Z" fill={t.swoosh2} opacity=".5" /><path d="M0,76 C30,58 60,92 100,70 L100,100 L0,100 Z" fill={t.swoosh} /></>}
+          {deco === "lines" && <><polygon points="0,48 100,70 100,72 0,50" fill={t.swoosh} /><polygon points="0,56 100,78 100,79 0,57" fill={t.swoosh2} /><polygon points="0,64 100,86 100,95 0,73" fill={t.swoosh} opacity=".9" /></>}
+          {deco === "circles" && <><circle cx="88" cy="88" r="34" fill={t.swoosh2} opacity=".35" /><circle cx="10" cy="96" r="26" fill={t.swoosh} opacity=".55" /><circle cx="70" cy="104" r="22" fill={t.swoosh} opacity=".8" /></>}
+        </svg>
+      )}
 
-      <button type="button" aria-label="Menu" onClick={() => setMenu(m => !m)} style={{ ...round({ width: 44, height: 44, background: "rgba(10,18,38,.35)" }), position: pos, top: 14, right: 14, zIndex: 5 }}><Ic n={menu ? "x" : "menu"} size={20} /></button>
-      {menu && (
+      {chrome && <button type="button" aria-label="Menu" onClick={() => setMenu(m => !m)} style={{ ...round({ width: 44, height: 44, background: "rgba(10,18,38,.35)" }), position: pos, top: 14, right: 14, zIndex: 5 }}><Ic n={menu ? "x" : "menu"} size={20} /></button>}
+      {chrome && menu && (
         <div style={{ position: pos, top: 66, right: 14, zIndex: 6, background: "#fff", color: t.title, borderRadius: 14, boxShadow: "0 8px 28px rgba(0,0,0,.35)", padding: 8, minWidth: 210 }}>
           {menuItems.map(([id, label]) => <button key={id} type="button" onClick={() => go(id)} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: "10px 12px", fontSize: 15, fontWeight: 600, color: t.title, cursor: "pointer", fontFamily: "inherit" }}>{label}</button>)}
           <button type="button" onClick={() => { setMenu(false); saveContact(); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", borderTop: "1px solid #eee", padding: "10px 12px", fontSize: 15, fontWeight: 600, color: t.title, cursor: "pointer", fontFamily: "inherit" }}>Add to contacts</button>
@@ -1016,26 +1049,27 @@ function OrgView({ data: d, design, title, preview, slug }) {
         </div>
       )}
 
-      <div style={{ position: "relative", zIndex: 2, maxWidth: 520, margin: "0 auto", padding: `${d.image ? 28 : 64}px 16px 0` }}>
-        <div style={{ textAlign: "center", marginBottom: 22 }}>
-          {d.image && <div style={{ width: 150, height: 150, borderRadius: "50%", background: "#fff", margin: "0 auto 16px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px rgba(0,0,0,.28)" }}><img src={d.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /></div>}
-          <h1 style={{ margin: "0 0 6px", fontSize: 28, fontWeight: 700, lineHeight: 1.15, color: onBg }}>{d.name || title || "Your name"}</h1>
-          {d.line1 && <p style={{ margin: 0, fontSize: 16, color: onBg, opacity: .95 }}>{d.line1}</p>}
-          {d.line2 && <p style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 700, color: onBg }}>{d.line2}</p>}
+      <div style={{ position: "relative", zIndex: 2, maxWidth: 520, margin: "0 auto", padding: `${chrome ? (d.image ? 28 : 64) : 22}px 16px 0` }}>
+        <div style={{ textAlign: left ? "left" : "center", marginBottom: 22, display: left ? "flex" : "block", alignItems: "center", gap: 16 }}>
+          {d.image && <div style={{ width: left ? 96 : 150, height: left ? 96 : 150, flex: "none", borderRadius: "50%", background: "#fff", margin: left ? 0 : "0 auto 16px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px rgba(0,0,0,.28)" }}><img src={d.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /></div>}
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: "0 0 6px", fontSize: left ? 24 : 28, fontWeight: 700, lineHeight: 1.15, color: onBg }}>{d.name || title || "Your name"}</h1>
+            {d.line1 && <p style={{ margin: 0, fontSize: 16, color: onBg, opacity: .95 }}>{d.line1}</p>}
+            {d.line2 && <p style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 700, color: onBg }}>{d.line2}</p>}
+          </div>
         </div>
 
-        {showBoard && <MessageBoard slug={slug} preview={preview} previewData={d} colors={{ card: t.card, title: t.title, accent: t.accent, btn: t.btn }} />}
+        {messagesNode || (showBoard && <MessageBoard slug={slug} preview={preview} previewData={d} colors={{ card: t.card, title: t.title, accent: t.accent, btn: t.btn }} />)}
 
-        {links.length > 0 && <div id="org-links">{links.map((l, i) => {
+        {links.length > 0 && <div id="org-links" style={t.links === "tile" ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 } : undefined}>{links.map((l, i) => {
           const u = safeUrl(l.url);
-          const inner = (
-            <>
-              {l.image ? <img src={l.image} alt="" style={{ width: 54, height: 54, objectFit: "contain", borderRadius: 10, flex: "none" }} /> : <span style={{ width: 54, height: 54, borderRadius: 10, background: `${t.accent}22`, color: t.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Ic n="link" size={22} /></span>}
-              <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 18, color: t.title, lineHeight: 1.2 }}>{l.title || "Link"}</span>{l.sub && <span style={{ display: "block", fontSize: 13.5, color: t.accent, marginTop: 2 }}>{l.sub}</span>}</span>
-              <Ic n="chevR" size={22} color={t.title} />
-            </>
-          );
-          const st = { ...card, display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", textDecoration: "none" };
+          const tile = t.links === "tile", pill = t.links === "pill";
+          const img = l.image ? <img src={l.image} alt="" style={{ width: tile ? 64 : pill ? 40 : 54, height: tile ? 64 : pill ? 40 : 54, objectFit: "contain", borderRadius: pill ? "50%" : 10, flex: "none" }} /> : <span style={{ width: tile ? 64 : pill ? 40 : 54, height: tile ? 64 : pill ? 40 : 54, borderRadius: pill ? "50%" : 10, background: `${t.accent}22`, color: t.accent, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Ic n="link" size={tile ? 26 : 20} /></span>;
+          const text = <span style={{ flex: tile ? "none" : 1, minWidth: 0, textAlign: tile ? "center" : "left" }}><span style={{ display: "block", fontSize: tile ? 15 : pill ? 16 : 18, color: t.title, lineHeight: 1.2, fontWeight: tile ? 600 : 400 }}>{l.title || "Link"}</span>{l.sub && <span style={{ display: "block", fontSize: 13, color: t.accent, marginTop: 2 }}>{l.sub}</span>}</span>;
+          const inner = tile ? <>{img}{text}</> : <>{img}{text}<Ic n="chevR" size={20} color={t.title} /></>;
+          const st = tile
+            ? { ...card, marginBottom: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "16px 10px", textDecoration: "none" }
+            : { ...card, borderRadius: pill ? 999 : 14, marginBottom: pill ? 10 : 14, display: "flex", alignItems: "center", gap: pill ? 12 : 14, padding: pill ? "10px 18px 10px 12px" : "14px 16px", textDecoration: "none" };
           return u ? <a key={l.id || i} href={u} target="_blank" rel="noreferrer" style={st}>{inner}</a> : <div key={l.id || i} style={st}>{inner}</div>;
         })}</div>}
 
@@ -1067,10 +1101,10 @@ function OrgView({ data: d, design, title, preview, slug }) {
           </div>
         ))}
 
-        <p style={{ textAlign: "center", fontSize: 11, color: onBg, opacity: .6, margin: "18px 0 96px" }}>Made with CardNova</p>
+        <p style={{ textAlign: "center", fontSize: 11, color: onBg, opacity: .6, margin: chrome ? "18px 0 96px" : "18px 0 14px" }}>Made with CardNova</p>
       </div>
 
-      <div style={{ position: "sticky", bottom: 0, zIndex: 4, display: "flex", justifyContent: "space-between", alignItems: "flex-end", padding: "0 14px 14px", pointerEvents: "none", marginTop: -84 }}>
+      {chrome && <div style={{ position: "sticky", bottom: 0, zIndex: 4, display: "flex", justifyContent: "space-between", alignItems: "flex-end", padding: "0 14px 14px", pointerEvents: "none", marginTop: -84 }}>
         <div style={{ display: "flex", gap: 10, pointerEvents: "auto" }}>
           <button type="button" aria-label="Show QR code" onClick={showQr} style={round()}><Ic n="qr" size={22} /></button>
           <button type="button" aria-label="Share" onClick={share} style={round()}><Ic n="upload" size={20} /></button>
@@ -1079,7 +1113,7 @@ function OrgView({ data: d, design, title, preview, slug }) {
           <span style={{ fontSize: 14, lineHeight: 1.15, textAlign: "center" }}>Add to<br />Contact</span>
           <span style={{ width: 38, height: 38, borderRadius: "50%", background: "#fff", color: t.btn, display: "flex", alignItems: "center", justifyContent: "center" }}><Ic n="plus" size={22} sw={2.4} /></span>
         </button>
-      </div>
+      </div>}
 
       {toast && <div style={{ position: pos, left: "50%", bottom: 86, transform: "translateX(-50%)", background: "#111", color: "#fff", padding: "8px 14px", borderRadius: 999, fontSize: 13, zIndex: 9 }}>{toast}</div>}
       {qr && (
