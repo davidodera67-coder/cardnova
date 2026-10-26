@@ -201,7 +201,23 @@ function Signed({ slug, info, token, onOut }) {
   const api = useMemo(() => orgApi.as(slug, token), [slug, token]);
   const uploader = useMemo(() => orgUploader(slug, token), [slug, token]);
   const [st, reload] = useAsync(() => api.get("me"), [slug, token]);
-  const [tab, setTab] = useState("home");
+  // Back / Next arrows for every move between screens (they also follow the phone's own back button).
+  const [nav, setNav] = useState({ stack: ["home"], i: 0 });
+  const tab = nav.stack[nav.i];
+  const setTab = (t) => setNav(n => {
+    if (t === n.stack[n.i]) return n;
+    const ni = n.i + 1;
+    try { window.history.pushState({ orgnav: ni }, ""); } catch { /* ignore */ }
+    return { stack: [...n.stack.slice(0, n.i + 1), t], i: ni };
+  });
+  const goBack = () => { if (nav.i > 0) window.history.back(); };
+  const goNext = () => { if (nav.i < nav.stack.length - 1) window.history.forward(); };
+  useEffect(() => {
+    try { window.history.replaceState({ orgnav: 0 }, ""); } catch { /* ignore */ }
+    const pop = (e) => { const i = e.state && typeof e.state.orgnav === "number" ? e.state.orgnav : 0; setNav(n => ({ ...n, i: Math.max(0, Math.min(i, n.stack.length - 1)) })); };
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
+  }, []);
   useEffect(() => { if (st.status === 401) onOut(); }, [st.status]);
   if (st.loading && !st.data) return <Shell info={info}><div style={{ textAlign: "center", padding: 40 }}><Spinner /></div></Shell>;
   if (st.err && !st.data) return <Shell info={info}><Note kind="err">{st.err}</Note><Btn onClick={reload}>Try again</Btn></Shell>;
@@ -220,6 +236,8 @@ function Signed({ slug, info, token, onOut }) {
   return (
     <Shell info={orgInfo} wide>
       <div className="sx-row" style={{ color: "#fff", marginBottom: 12 }}>
+        <button type="button" aria-label="Back" title="Back" disabled={nav.i === 0} onClick={goBack} style={{ width: 36, height: 36, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,.5)", color: "#fff", opacity: nav.i === 0 ? .35 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Ic n="chevL" size={20} /></button>
+        <button type="button" aria-label="Next" title="Next" disabled={nav.i >= nav.stack.length - 1} onClick={goNext} style={{ width: 36, height: 36, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,.5)", color: "#fff", opacity: nav.i >= nav.stack.length - 1 ? .35 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Ic n="chevR" size={20} /></button>
         <div className="sx-grow"><b>{me.org.name}</b><div style={{ fontSize: 12, opacity: .85 }}>{me.member.name} · {LEVELS[lv]}</div></div>
         <button type="button" onClick={onOut} style={{ color: "#fff", border: "1.5px solid rgba(255,255,255,.5)", borderRadius: 9, padding: "6px 12px", fontSize: 13 }}>Sign out</button>
       </div>
