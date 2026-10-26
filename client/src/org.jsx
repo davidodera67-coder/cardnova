@@ -16,6 +16,7 @@ async function oreq(path, { method = "GET", body, token } = {}) {
   return data;
 }
 export const orgApi = {
+  access: (t) => oreq("/access", { token: t }),
   mine: (t) => oreq("/mine", { token: t }),
   create: (b, t) => oreq("/", { method: "POST", body: b, token: t }),
   portalToken: (id, t) => oreq(`/${id}/portal-token`, { method: "POST", token: t }),

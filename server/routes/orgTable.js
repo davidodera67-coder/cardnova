@@ -2,6 +2,7 @@
 // "owner" = needs a normal CardNova sign-in; everything else is checked inside the controller.
 export const orgTable = (C) => [
   // CardNova account holder
+  ["GET", "/access", "owner", C.orgAccess],
   ["GET", "/mine", "owner", C.myOrgs],
   ["POST", "/", "owner", C.createOrg],
   ["POST", "/invite", "owner", C.inviteOrganiser],

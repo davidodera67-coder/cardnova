@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Ic, K, StudioStyles, Btn, Fld, Chips, Toggle, Modal, Note, Spinner, CopyBtn, QRDesigner, NfcPanel, tableCardsPdf, menuPdf, nfcSupported, pageUrl, randomSlug, slugify, downloadText, copyText, uid, DEFAULT_QR } from "./kit.jsx";
 import { MenuView, PhoneFrame, VenueTab, MenuItemsTab, OrderingTab, LookTab, emptyMenu, sampleMenu, resolveTokens } from "./menu.jsx";
-import { OrgPanel } from "./org.jsx";
+import { OrgPanel, orgApi } from "./org.jsx";
 import { SOL, CHOOSER, CHOOSER_CATS, SolutionFields, SolutionLook, SolutionView, StaticPreview, isStatic, staticPayload, solutionReady, newSolutionData } from "./solutions.jsx";
 
 /* ---------------------------------------------------------------- api */
@@ -46,6 +46,7 @@ export function Studio({ token, currentUser, onNewCard, onUpgrade }) {
   const [err, setErr] = useState("");
   const [draft, setDraft] = useState(null);
   const [startTab, setStartTab] = useState(null);
+  const [orgOk, setOrgOk] = useState(false);   // the Organisations section is only for the platform owner (and people they add)
 
   const load = async () => {
     setLoading(true); setErr("");
@@ -54,6 +55,7 @@ export function Studio({ token, currentUser, onNewCard, onUpgrade }) {
     finally { setLoading(false); }
   };
   useEffect(() => { if (token) load(); }, [token]);
+  useEffect(() => { if (!token) return; orgApi.access(token).then(r => setOrgOk(!!r.allowed)).catch(() => setOrgOk(false)); }, [token]);
 
   const atLimit = pages.length >= limit;
   const startNew = (c) => {
@@ -108,14 +110,14 @@ export function Studio({ token, currentUser, onNewCard, onUpgrade }) {
       <div className="sx-tabs" style={{ marginBottom: 14 }}>
         <button type="button" className={`sx-tab ${view === "list" || view === "choose" ? "on" : ""}`} onClick={() => setView("list")}><Ic n="qr" size={14} /> My pages</button>
         <button type="button" className={`sx-tab ${view === "responses" ? "on" : ""}`} onClick={() => setView("responses")}><Ic n="users" size={14} /> Responses</button>
-        <button type="button" className={`sx-tab ${view === "orgs" ? "on" : ""}`} onClick={() => setView("orgs")}><Ic n="nfc" size={14} /> Organisations</button>
+        {orgOk && <button type="button" className={`sx-tab ${view === "orgs" ? "on" : ""}`} onClick={() => setView("orgs")}><Ic n="nfc" size={14} /> Organisations</button>}
       </div>
 
       {err && <Note kind="err">{err}</Note>}
 
       {view === "choose" && <Chooser onPick={startNew} onCancel={() => setView("list")} />}
       {view === "responses" && <Responses token={token} />}
-      {view === "orgs" && <OrgPanel token={token} />}
+      {view === "orgs" && orgOk && <OrgPanel token={token} />}
       {view === "list" && (
         loading ? <p className="sx-mut"><Spinner /> Loading…</p> : pages.length === 0 ? (
           <div className="sx-card" style={{ textAlign: "center", padding: 28 }}>

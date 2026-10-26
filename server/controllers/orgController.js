@@ -65,6 +65,12 @@ async function sendResetEmail(org, member, kind = "reset") {
 }
 
 /* ------------------------------------- CardNova account holder (owner) */
+// Only the platform owner (and anyone they add to ORG_OWNER_EMAILS) may see or use the Organisations section.
+const isOrgAllowed = (user) => process.env.ORG_OPEN === "1" || S(process.env.ORG_OWNER_EMAILS).split(",").map(lower).filter(Boolean).includes(lower(user?.email));
+export const orgAccess = wrap(async (req, res) => {
+  const user = await User.findById(req.userId);
+  res.json({ allowed: !!user && isOrgAllowed(user) });
+});
 export const createOrg = wrap(async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(401).json({ message: "Please sign in again." });
@@ -83,6 +89,8 @@ export const createOrg = wrap(async (req, res) => {
 });
 
 export const myOrgs = wrap(async (req, res) => {
+  const user = await User.findById(req.userId);
+  if (!user || !isOrgAllowed(user)) return res.status(403).json({ message: "Organisation portals are switched on per account. Contact CardNova to enable it for yours." });
   const list = await Org.find({ owner: req.userId });
   res.json(list.map((o) => ({ id: id(o), name: o.name, slug: o.slug, joinCode: o.joinCode, handedOverTo: o.handedOverTo || "" })));
 });
@@ -92,6 +100,7 @@ export const ownerPortalToken = wrap(async (req, res) => {
   const org = await Org.findOne({ _id: req.params.id, owner: req.userId });
   if (!org) return res.status(404).json({ message: "Organisation not found." });
   const user = await User.findById(req.userId);
+  if (!user || !isOrgAllowed(user)) return res.status(403).json({ message: "Organisation portals are switched on per account." });
   const member = await OrgMember.findOne({ org: id(org), email: lower(user?.email) });
   if (!member || member.level < 3 || member.status !== "active") return res.status(403).json({ message: "Your owner access isn't active for this organisation." });
   res.json({ token: signToken({ mid: id(member), oid: id(org) }), slug: org.slug });
