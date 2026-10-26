@@ -1003,7 +1003,7 @@ function makeOrgVcard(d, pageUrl) {
   ].filter(Boolean).join("\r\n");
 }
 
-export function OrgView({ data: d, design, title, preview, slug, chrome = true, messagesNode }) {
+export function OrgView({ data: d, design, title, preview, slug, chrome = true, messagesNode, saveOverride, qrStyle, qrLogo }) {
   const t = orgTokens(design);
   useFonts(["Roboto"]);
   const [menu, setMenu] = useState(false);
@@ -1024,6 +1024,7 @@ export function OrgView({ data: d, design, title, preview, slug, chrome = true, 
   const go = (id) => { setMenu(false); setTimeout(() => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60); };
 
   const saveContact = () => {
+    if (saveOverride) return saveOverride();
     const vcf = makeOrgVcard({ ...d, name: d.name || title }, preview ? "" : href);
     downloadText(vcf, `${(d.name || "contact").replace(/[^\w]+/g, "-")}.vcf`, "text/vcard");
   };
@@ -1031,7 +1032,7 @@ export function OrgView({ data: d, design, title, preview, slug, chrome = true, 
     try { if (navigator.share) { await navigator.share({ title: d.name || title, url: href }); return; } } catch { return; }
     try { await navigator.clipboard.writeText(href); say("Link copied"); } catch { say(href); }
   };
-  const showQr = async () => { setQr("loading"); try { const r = await qrDataUrl(href, { ...DEFAULT_QR, fg1: "#0a1226", frame: "below", frameText: "SCAN ME" }, null, 10); setQr(r.url); } catch { setQr(""); say("Couldn't make the QR code"); } };
+  const showQr = async () => { setQr("loading"); try { const r = await qrDataUrl(href, qrStyle ? { ...DEFAULT_QR, ...qrStyle } : { ...DEFAULT_QR, fg1: "#0a1226", frame: "below", frameText: "SCAN ME" }, qrLogo || null, 10); setQr(r.url); } catch { setQr(""); say("Couldn't make the QR code"); } };
 
   const card = { background: t.card, borderRadius: 14, marginBottom: 14, boxShadow: "0 2px 10px rgba(0,0,0,.14)" };
   const round = (extra) => ({ width: 52, height: 52, borderRadius: "50%", background: t.btn, color: "#fff", border: "2px solid rgba(255,255,255,.25)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 3px 10px rgba(0,0,0,.3)", padding: 0, ...extra });

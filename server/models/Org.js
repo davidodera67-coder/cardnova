@@ -12,7 +12,8 @@ const orgSchema = new mongoose.Schema(
       cardLocationPrompt: { type: Boolean, default: false }, // ask people who tap an ACTIVE card to share their location
     },
     profile: { type: mongoose.Schema.Types.Mixed, default: {} }, // the page content (logo, links, contact, text boxes …)
-    design: { type: mongoose.Schema.Types.Mixed, default: {} },  // chosen template + colours
+    design: { type: mongoose.Schema.Types.Mixed, default: {} },  // chosen template + colours + QR style
+    handedOverTo: { type: String, default: "" },                 // email of the organiser it was handed to
   },
   { timestamps: true, minimize: false }
 );

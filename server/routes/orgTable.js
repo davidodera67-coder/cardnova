@@ -4,11 +4,15 @@ export const orgTable = (C) => [
   // CardNova account holder
   ["GET", "/mine", "owner", C.myOrgs],
   ["POST", "/", "owner", C.createOrg],
+  ["POST", "/invite", "owner", C.inviteOrganiser],
   ["POST", "/:id/portal-token", "owner", C.ownerPortalToken],
+  ["POST", "/:id/handover", "owner", C.handOver],
   // public
   ["GET", "/public/:slug", null, C.publicOrg],
   ["GET", "/card/:token", null, C.publicCard],
   ["POST", "/card/:token/location", null, C.cardLocation],
+  ["POST", "/card/:token/messages", null, C.cardMessages],
+  ["POST", "/card/:token/forgot", null, C.cardForgot],
   ["POST", "/:slug/signup", null, C.signup],
   ["POST", "/:slug/verify", null, C.verifyEmail],
   ["POST", "/:slug/resend", null, C.resendVerify],
@@ -35,6 +39,7 @@ export const orgTable = (C) => [
   ["GET", "/:slug/admin/cards", null, C.listCards],
   ["POST", "/:slug/admin/cards", null, C.createCard],
   ["PUT", "/:slug/admin/cards/:cardId", null, C.updateCard],
+  ["POST", "/:slug/admin/cards-design", null, C.applyDesignToAll],
   ["POST", "/:slug/admin/cards/:cardId/deactivate", null, C.deactivateCard],
   ["POST", "/:slug/admin/cards/:cardId/reactivate", null, C.reactivateCard],
   ["POST", "/:slug/admin/cards/:cardId/reissue", null, C.reissueCard],

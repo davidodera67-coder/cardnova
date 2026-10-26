@@ -84,7 +84,7 @@ export const createOrg = wrap(async (req, res) => {
 
 export const myOrgs = wrap(async (req, res) => {
   const list = await Org.find({ owner: req.userId });
-  res.json(list.map((o) => ({ id: id(o), name: o.name, slug: o.slug, joinCode: o.joinCode })));
+  res.json(list.map((o) => ({ id: id(o), name: o.name, slug: o.slug, joinCode: o.joinCode, handedOverTo: o.handedOverTo || "" })));
 });
 
 // Lets the CardNova account holder open their own portal as Owner without a second sign-in.
@@ -348,15 +348,121 @@ export const removeMember = wrap(async (req, res) => {
   res.json({ message: "Removed." });
 });
 
+/* --------------- the locked "Messages" section on a public member card */
+const cardMsgLimit = limiter(12, 10 * 60 * 1000);
+const msgView = (m) => ({ id: id(m), title: m.title, body: m.body, author: m.author, at: m.createdAt, edited: !!m.edited, targeted: m.audience === "some" });
+// Only the card's own member, with their own code, can open this. Nothing here is public.
+export const cardMessages = wrap(async (req, res) => {
+  const hit = await findCardByToken(req.params.token);
+  if (!hit || hit.replaced || hit.card.status !== "active") return res.status(404).json({ message: "This card isn't active." });
+  if (cardMsgLimit(`${clientIp(req)}|${id(hit.card)}`)) return res.status(429).json({ message: "Too many tries. Please wait a few minutes." });
+  const m = hit.card.member ? await OrgMember.findById(hit.card.member) : null;
+  if (!m || m.status !== "active" || !m.codeHash) return res.status(404).json({ message: "There are no messages for this card." });
+  if (m.lockUntil && new Date(m.lockUntil) > new Date()) return res.status(429).json({ message: "Messages are locked for a few minutes after too many wrong codes." });
+  if (!(await checkCode(S(req.body?.code), m.codeHash))) {
+    const fails = (m.failedLogins || 0) + 1;
+    await OrgMember.updateOne({ _id: id(m) }, fails >= 8 ? { failedLogins: 0, lockUntil: new Date(Date.now() + 15 * 60 * 1000) } : { failedLogins: fails });
+    return res.status(401).json({ message: "That code isn't right." });
+  }
+  if (m.failedLogins) await OrgMember.updateOne({ _id: id(m) }, { failedLogins: 0 });
+  const msgs = (await OrgMessage.find({ org: String(hit.card.org) }).sort({ createdAt: -1 })).filter((x) => x.audience !== "some" || (x.to || []).includes(id(m)));
+  res.json({ messages: msgs.map(msgView), name: m.name });
+});
+
+// "Forgot code" lives only in the messages section. It emails the card owner a one-time link; the answer never says who it was sent to.
+export const cardForgot = wrap(async (req, res) => {
+  const hit = await findCardByToken(req.params.token);
+  if (!hit || hit.replaced || hit.card.status !== "active") return res.status(404).json({ message: "This card isn't active." });
+  if (!mailReady()) return res.json({ message: "Email isn't set up yet. Please ask your organiser for a temporary code.", manual: true });
+  if (!mailLimit(`${clientIp(req)}|${id(hit.card)}`)) {
+    const m = hit.card.member ? await OrgMember.findById(hit.card.member) : null;
+    const org = await Org.findById(String(hit.card.org));
+    if (m && org && m.status === "active" && m.email) bg(sendResetEmail(org, m, "reset"));
+  }
+  res.json({ message: "If this card belongs to a member with an email, we've sent a link to choose a new code. It works once and expires in 30 minutes." });
+});
+
+/* ------------------------------- organiser invites & hand-over (platform owner) */
+const rawInvite = async (org, member) => {
+  const token = newToken();
+  await OrgMember.updateOne({ _id: id(member) }, { resetTokenHash: sha256(token), resetExpires: new Date(Date.now() + 7 * 24 * 3600 * 1000), mustChange: false });
+  return `${siteOrigin()}/o/${org.slug}?reset=${token}`;
+};
+async function giveOwnerAccess(org, name, email) {
+  let m = await OrgMember.findOne({ org: id(org), email });
+  if (!m) m = await OrgMember.create({ org: id(org), name: clean(name, 80) || email.split("@")[0], email, level: 3, status: "active", emailVerified: true, codeHash: "", consentAt: new Date() });
+  else await OrgMember.updateOne({ _id: id(m) }, { level: 3, status: "active", emailVerified: true });
+  const link = await rawInvite(org, m);
+  let emailed = false;
+  if (mailReady()) { emailed = true; bg(sendMail({ to: email, subject: `You've been given ${org.name} on CardNova`, text: `Hello ${m.name},\n\nYou are now the organiser of ${org.name}. Open this link to choose your own access code and sign in:\n${link}\n\nThe link works once and expires in 7 days.` })); }
+  return { link, emailed, hasCode: !!m.codeHash };
+}
+const ownerOnly = async (req, res) => {
+  const user = await User.findById(req.userId);
+  if (!user) { res.status(401).json({ message: "Please sign in again." }); return null; }
+  const allowed = S(process.env.ORG_OWNER_EMAILS).split(",").map(lower).filter(Boolean);
+  if (process.env.ORG_OPEN !== "1" && !allowed.includes(lower(user.email))) { res.status(403).json({ message: "Organisation portals are switched on per account. Contact CardNova to enable it for yours." }); return null; }
+  return user;
+};
+// Create an organisation for another company: they get an emailed link to set their own code and become its Owner.
+export const inviteOrganiser = wrap(async (req, res) => {
+  const user = await ownerOnly(req, res); if (!user) return;
+  const { name, slug, ownerEmail, ownerName, adminCode } = req.body || {};
+  const nm = clean(name, 80), sl = lower(slug), em = lower(ownerEmail);
+  if (!nm) return res.status(400).json({ message: "Enter the organisation's name." });
+  if (!slugOk(sl)) return res.status(400).json({ message: "The link name must be 3–40 characters: lowercase letters, numbers and dashes." });
+  if (!emailOk(em)) return res.status(400).json({ message: "Enter the organiser's email address." });
+  if (adminCode && !codeOk(adminCode)) return res.status(400).json({ message: "Your own access code must be at least 6 characters (or leave it empty)." });
+  if ((await Org.find({ owner: req.userId })).length >= 30) return res.status(403).json({ message: "That's the limit of organisations for one account." });
+  if (await Org.findOne({ slug: sl })) return res.status(409).json({ message: "That link name is already taken." });
+  const org = await Org.create({ owner: req.userId, name: nm, slug: sl, joinCode: joinCode(), settings: { requireApproval: true, cardLocationPrompt: false }, profile: { name: nm }, design: { tpl: "t01" } });
+  if (adminCode && lower(user.email) !== em) await OrgMember.create({ org: id(org), name: clean(user.name, 80) || "CardNova", email: lower(user.email), codeHash: await hashCode(adminCode), level: 3, status: "active", emailVerified: true, consentAt: new Date() });
+  const inv = await giveOwnerAccess(org, ownerName, em);
+  await Org.updateOne({ _id: id(org) }, { handedOverTo: em });
+  res.status(201).json({ id: id(org), name: org.name, slug: org.slug, joinCode: org.joinCode, inviteLink: inv.link, emailed: inv.emailed });
+});
+// Hand an existing organisation to someone (or re-send the link). Optionally remove your own access.
+export const handOver = wrap(async (req, res) => {
+  const user = await ownerOnly(req, res); if (!user) return;
+  const org = await Org.findOne({ _id: req.params.id, owner: req.userId });
+  if (!org) return res.status(404).json({ message: "Organisation not found." });
+  const em = lower(req.body?.email);
+  if (!emailOk(em)) return res.status(400).json({ message: "Enter the new organiser's email address." });
+  const inv = await giveOwnerAccess(org, req.body?.name, em);
+  await Org.updateOne({ _id: id(org) }, { handedOverTo: em });
+  if (req.body?.removeMe && lower(user.email) !== em) await OrgMember.deleteMany({ org: id(org), email: lower(user.email) });
+  res.json({ inviteLink: inv.link, emailed: inv.emailed, message: "Handed over." });
+});
+// Express middleware (organiser uploads share the CardNova Cloudinary storage but need no CardNova account).
+export const adminUploadGuard = async (req, res, next) => { try { const a = await auth(req, res, 2); if (a) next(); } catch (e) { next(e); } };
+
 /* ----------------------------------------------------- admin: cards */
-const CARD_FIELDS = ["name", "title", "company", "phone", "email", "whatsapp", "website", "photo", "bio"];
+const BUTTON_IDS = ["save", "call", "whatsapp", "email", "website"];
+const SOCIAL_KEYS = ["whatsapp", "linkedin", "instagram", "facebook", "twitter"];
+const strList = (v, n, len) => (Array.isArray(v) ? v : []).slice(0, n).map((x) => clean(isObj(x) ? x.value : x, len)).filter(Boolean);
+// A member card is stored in the same shape as a CardNova card so the same templates can draw it.
 function cleanProfile(p) {
   const o = {};
-  if (isObj(p)) {
-    CARD_FIELDS.forEach((k) => { if (p[k] !== undefined) o[k] = clean(p[k], k === "bio" ? 600 : k === "photo" ? 600 : 160); });
-    ["phones", "emails", "whatsapps"].forEach((k) => { o[k] = (Array.isArray(p[k]) ? p[k] : []).slice(0, 8).map((x) => ({ label: clean(x?.label, 40), value: clean(x?.value, 120) })).filter((x) => x.value); });
-    o.links = (Array.isArray(p.links) ? p.links : []).slice(0, 8).map((l) => ({ title: clean(l?.title, 80), url: clean(l?.url, 400) })).filter((l) => l.title || l.url);
-  }
+  if (!isObj(p)) return o;
+  ["name", "title", "company", "website", "address"].forEach((k) => { o[k] = clean(p[k], 160); });
+  o.bio = clean(p.bio, 600);
+  o.photo = clean(p.photo, 600); o.banner = clean(p.banner, 600); o.bannerType = p.bannerType === "video" ? "video" : "image";
+  o.theme = clean(p.theme, 40);
+  // old style (single phone/email + labelled extras) is folded into the plain lists
+  o.phones = [...new Set([...strList([p.phone], 1, 40), ...strList(p.phones, 8, 40)])];
+  o.emails = [...new Set([...strList([p.email], 1, 160), ...strList(p.emails, 8, 160)])];
+  const soc = isObj(p.socials) ? p.socials : {};
+  o.socials = {}; SOCIAL_KEYS.forEach((k) => { o.socials[k] = clean(soc[k] ?? (k === "whatsapp" ? p.whatsapp : ""), 200); });
+  o.buttons = (Array.isArray(p.buttons) ? p.buttons : ["save", "call", "whatsapp", "email"]).filter((x) => BUTTON_IDS.includes(x));
+  if (isObj(p.design) && !tooBig(p.design, 4000)) {
+    o.design = {};
+    for (const [k, v] of Object.entries(p.design)) {
+      if (typeof v === "string" || typeof v === "number") o.design[k] = typeof v === "string" ? v.slice(0, 60) : v;
+      else if (k === "org" && isObj(v)) { o.design.org = {}; for (const [ck, cv] of Object.entries(v)) if (typeof cv === "string") o.design.org[ck.slice(0, 20)] = cv.slice(0, 20); } // colour tweaks of the "Organisation page" layout
+    }
+  } else o.design = {};
+  o.links = (Array.isArray(p.links) ? p.links : []).slice(0, 8).map((l) => ({ title: clean(l?.title, 80), sub: clean(l?.sub, 80), url: clean(l?.url, 400), image: clean(l?.image, 600) })).filter((l) => l.title || l.url);
+  o.blocks = (Array.isArray(p.blocks) ? p.blocks : []).slice(0, 6).map((b) => ({ title: clean(b?.title, 100), text: clean(b?.text, 2000) })).filter((b) => b.title || b.text);
   return o;
 }
 const cardOut = (c, org) => ({ id: id(c), label: c.label, member: c.member, status: c.status, link: `${siteOrigin()}/c/${c.token}`, token: c.token, profile: c.profile || {}, scans: c.scans || 0, lastScanAt: c.lastScanAt || null, deactivatedAt: c.deactivatedAt || null, deactivatedBy: c.deactivatedBy || "", deactivatedReason: c.deactivatedReason || "", createdAt: c.createdAt });
@@ -417,6 +523,15 @@ export const reissueCard = wrap(async (req, res) => {
   const token = cardToken();
   await OrgCard.updateOne({ _id: id(c) }, { token, oldTokens: [...(c.oldTokens || []), c.token], status: "active", deactivatedAt: null, deactivatedBy: "", deactivatedReason: "" });
   res.json({ link: `${siteOrigin()}/c/${token}`, message: "New link created. Write it onto the replacement NFC tag. The old link now shows that the card was replaced." });
+});
+export const applyDesignToAll = wrap(async (req, res) => {
+  const a = await auth(req, res, 2); if (!a) return;
+  const d = isObj(req.body?.design) ? req.body.design : null;
+  if (!d || tooBig(d, 4000)) return res.status(400).json({ message: "That design isn't valid." });
+  const theme = clean(req.body?.theme, 40);
+  const cards = await OrgCard.find({ org: id(a.org) });
+  for (const c of cards) { const prof = cleanProfile({ ...(c.profile || {}), design: d, theme: theme || c.profile?.theme }); await OrgCard.updateOne({ _id: id(c) }, { profile: { ...(c.profile || {}), design: prof.design, theme: prof.theme } }); }
+  res.json({ message: `Design applied to ${cards.length} card${cards.length === 1 ? "" : "s"}.`, count: cards.length });
 });
 export const deleteCard = wrap(async (req, res) => {
   const a = await auth(req, res, 3); if (!a) return;
@@ -499,7 +614,10 @@ export const publicCard = wrap(async (req, res) => {
   const orgOut = { name: org?.name || "", logo: prof.image || "", design: org?.design || {}, slug: org?.slug || "", ...contact };
   const askLocation = inactive || !!org?.settings?.cardLocationPrompt;
   if (inactive) return res.json({ status: replaced ? "replaced" : "deactivated", org: orgOut, scanId, askLocation: true });
-  res.json({ status: "active", org: orgOut, card: card.profile || {}, scanId, askLocation });
+  // The card itself is public (contact details). Messages are NOT sent here — only whether a locked message section exists.
+  const owner = card.member ? await OrgMember.findById(card.member) : null;
+  const hasMessages = !!(owner && owner.status === "active" && owner.codeHash);
+  res.json({ status: "active", org: orgOut, card: card.profile || {}, hasMessages, scanId, askLocation });
 });
 
 // Only called when the person presses "Share my location" — never silently.

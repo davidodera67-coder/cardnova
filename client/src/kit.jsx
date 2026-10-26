@@ -298,7 +298,8 @@ export function ImgUpload({ value, onChange, token, label = "Add picture", pdf =
     setErr(""); setBusy(true);
     try {
       const file = pdf ? f : await shrinkImage(f);
-      const { url } = await api.uploadFile(file, pdf ? "pdf" : "photo", token);
+      // `token` is normally the CardNova sign-in token; the organisation portal passes { upload } instead
+      const { url } = token && typeof token === "object" && token.upload ? await token.upload(file, pdf ? "pdf" : "photo") : await api.uploadFile(file, pdf ? "pdf" : "photo", token);
       onChange(url);
     } catch (ex) { setErr(ex.message || "Upload failed"); }
     finally { setBusy(false); }
