@@ -448,6 +448,7 @@ export const adminUploadGuard = async (req, res, next) => { try { const a = awai
 /* ----------------------------------------------------- admin: cards */
 const BUTTON_IDS = ["save", "call", "whatsapp", "email", "website"];
 const SOCIAL_KEYS = ["whatsapp", "linkedin", "instagram", "facebook", "twitter"];
+const MAXN = 30; // phones, emails, links, PDFs: effectively as many as anyone needs
 const strList = (v, n, len) => (Array.isArray(v) ? v : []).slice(0, n).map((x) => clean(isObj(x) ? x.value : x, len)).filter(Boolean);
 // A member card is stored in the same shape as a CardNova card so the same templates can draw it.
 function cleanProfile(p) {
@@ -458,8 +459,8 @@ function cleanProfile(p) {
   o.photo = clean(p.photo, 600); o.banner = clean(p.banner, 600); o.bannerType = p.bannerType === "video" ? "video" : "image";
   o.theme = clean(p.theme, 40);
   // old style (single phone/email + labelled extras) is folded into the plain lists
-  o.phones = [...new Set([...strList([p.phone], 1, 40), ...strList(p.phones, 8, 40)])];
-  o.emails = [...new Set([...strList([p.email], 1, 160), ...strList(p.emails, 8, 160)])];
+  o.phones = [...new Set([...strList([p.phone], 1, 40), ...strList(p.phones, MAXN, 40)])];
+  o.emails = [...new Set([...strList([p.email], 1, 160), ...strList(p.emails, MAXN, 160)])];
   const soc = isObj(p.socials) ? p.socials : {};
   o.socials = {}; SOCIAL_KEYS.forEach((k) => { o.socials[k] = clean(soc[k] ?? (k === "whatsapp" ? p.whatsapp : ""), 200); });
   o.buttons = (Array.isArray(p.buttons) ? p.buttons : ["save", "call", "whatsapp", "email"]).filter((x) => BUTTON_IDS.includes(x));
@@ -470,8 +471,10 @@ function cleanProfile(p) {
       else if (k === "org" && isObj(v)) { o.design.org = {}; for (const [ck, cv] of Object.entries(v)) if (typeof cv === "string") o.design.org[ck.slice(0, 20)] = cv.slice(0, 20); } // colour tweaks of the "Organisation page" layout
     }
   } else o.design = {};
-  o.links = (Array.isArray(p.links) ? p.links : []).slice(0, 8).map((l) => ({ title: clean(l?.title, 80), sub: clean(l?.sub, 80), url: clean(l?.url, 400), image: clean(l?.image, 600) })).filter((l) => l.title || l.url);
-  o.blocks = (Array.isArray(p.blocks) ? p.blocks : []).slice(0, 6).map((b) => ({ title: clean(b?.title, 100), text: clean(b?.text, 2000) })).filter((b) => b.title || b.text);
+  o.links = (Array.isArray(p.links) ? p.links : []).slice(0, MAXN).map((l) => ({ title: clean(l?.title, 80), sub: clean(l?.sub, 80), url: clean(l?.url, 400), image: clean(l?.image, 600) })).filter((l) => l.title || l.url);
+  o.pdfs = (Array.isArray(p.pdfs) ? p.pdfs : []).slice(0, MAXN).map((f) => ({ title: clean(f?.title, 100), url: clean(f?.url, 600) })).filter((f) => f.url);
+  ["contactTitle", "callLabel", "emailLabel", "waLabel", "dirLabel", "filesTitle", "messagesTitle"].forEach((k) => { o[k] = clean(p[k], 40); }); // wording on the card the organiser can change
+  o.blocks = (Array.isArray(p.blocks) ? p.blocks : []).slice(0, 12).map((b) => ({ title: clean(b?.title, 100), text: clean(b?.text, 2000) })).filter((b) => b.title || b.text);
   return o;
 }
 const cardOut = (c, org) => ({ id: id(c), label: c.label, member: c.member, status: c.status, link: `${siteOrigin()}/c/${c.token}`, token: c.token, profile: c.profile || {}, scans: c.scans || 0, lastScanAt: c.lastScanAt || null, deactivatedAt: c.deactivatedAt || null, deactivatedBy: c.deactivatedBy || "", deactivatedReason: c.deactivatedReason || "", createdAt: c.createdAt });
@@ -533,14 +536,39 @@ export const reissueCard = wrap(async (req, res) => {
   await OrgCard.updateOne({ _id: id(c) }, { token, oldTokens: [...(c.oldTokens || []), c.token], status: "active", deactivatedAt: null, deactivatedBy: "", deactivatedReason: "" });
   res.json({ link: `${siteOrigin()}/c/${token}`, message: "New link created. Write it onto the replacement NFC tag. The old link now shows that the card was replaced." });
 });
+// Copy a card (design, party line, links, text boxes, PDFs…) to several members at once. Personal fields start from each member's own details and stay editable.
+export const duplicateCard = wrap(async (req, res) => {
+  const a = await auth(req, res, 2); if (!a) return;
+  const src = await OrgCard.findOne({ _id: req.params.cardId, org: id(a.org) });
+  if (!src) return res.status(404).json({ message: "Card not found." });
+  const ids = [...new Set((Array.isArray(req.body?.memberIds) ? req.body.memberIds : []).map(S))].slice(0, 200);
+  const members = ids.length ? (await OrgMember.find({ org: id(a.org) })).filter((m) => ids.includes(id(m)) && m.status === "active") : [];
+  if (ids.length && !members.length) return res.status(400).json({ message: "Choose active members." });
+  const copies = Math.max(1, Math.min(50, Number(req.body?.copies) || 1));
+  const targets = members.length ? members : Array.from({ length: copies }, () => null);
+  const made = [];
+  for (const m of targets) {
+    const profile = JSON.parse(JSON.stringify(src.profile || {}));
+    if (m) { profile.name = m.name; profile.phones = m.phone ? [m.phone] : []; profile.emails = m.email ? [m.email] : []; if (profile.socials) profile.socials.whatsapp = ""; }
+    const c = await OrgCard.create({ org: id(a.org), member: m ? id(m) : "", label: m ? m.name : `${src.label || "Card"} (copy)`, token: cardToken(), profile: cleanProfile(profile) });
+    made.push(cardOut(c, a.org));
+  }
+  res.status(201).json({ cards: made, message: `${made.length} card${made.length === 1 ? "" : "s"} created.` });
+});
+
+// Update the shared parts (design, party line, links, text boxes, PDFs, labels…) on every card at once. Names, phones and emails are left alone.
 export const applyDesignToAll = wrap(async (req, res) => {
   const a = await auth(req, res, 2); if (!a) return;
-  const d = isObj(req.body?.design) ? req.body.design : null;
-  if (!d || tooBig(d, 4000)) return res.status(400).json({ message: "That design isn't valid." });
-  const theme = clean(req.body?.theme, 40);
+  const sh = isObj(req.body?.shared) ? req.body.shared : { design: req.body?.design, theme: req.body?.theme };
+  if (!isObj(sh.design) || tooBig(sh, 60000)) return res.status(400).json({ message: "That design isn't valid." });
+  const KEEP = ["design", "theme", "company", "address", "website", "links", "blocks", "pdfs", "photo", "banner", "bannerType", "contactTitle", "callLabel", "emailLabel", "waLabel", "dirLabel", "filesTitle", "messagesTitle"];
   const cards = await OrgCard.find({ org: id(a.org) });
-  for (const c of cards) { const prof = cleanProfile({ ...(c.profile || {}), design: d, theme: theme || c.profile?.theme }); await OrgCard.updateOne({ _id: id(c) }, { profile: { ...(c.profile || {}), design: prof.design, theme: prof.theme } }); }
-  res.json({ message: `Design applied to ${cards.length} card${cards.length === 1 ? "" : "s"}.`, count: cards.length });
+  for (const c of cards) {
+    const merged = { ...(c.profile || {}) };
+    for (const k of KEEP) if (sh[k] !== undefined) merged[k] = sh[k];
+    await OrgCard.updateOne({ _id: id(c) }, { profile: cleanProfile(merged) });
+  }
+  res.json({ message: `Shared details applied to ${cards.length} card${cards.length === 1 ? "" : "s"}.`, count: cards.length });
 });
 export const deleteCard = wrap(async (req, res) => {
   const a = await auth(req, res, 3); if (!a) return;

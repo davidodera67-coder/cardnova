@@ -41,6 +41,7 @@ export const orgTable = (C) => [
   ["POST", "/:slug/admin/cards", null, C.createCard],
   ["PUT", "/:slug/admin/cards/:cardId", null, C.updateCard],
   ["POST", "/:slug/admin/cards-design", null, C.applyDesignToAll],
+  ["POST", "/:slug/admin/cards/:cardId/duplicate", null, C.duplicateCard],
   ["POST", "/:slug/admin/cards/:cardId/deactivate", null, C.deactivateCard],
   ["POST", "/:slug/admin/cards/:cardId/reactivate", null, C.reactivateCard],
   ["POST", "/:slug/admin/cards/:cardId/reissue", null, C.reissueCard],

@@ -437,12 +437,12 @@ export function toCard(p = {}) {
   const emails = [...new Set([val(p.email), ...arr(p.emails).map(val)].filter(Boolean))];
   const socials = { whatsapp: "", linkedin: "", instagram: "", facebook: "", twitter: "", ...(p.socials || {}) };
   if (!socials.whatsapp && p.whatsapp) socials.whatsapp = p.whatsapp;
-  return { name: p.name || "", title: p.title || "", company: p.company || "", bio: p.bio || "", photo: p.photo || "", banner: p.banner || "", bannerType: p.bannerType || "image", theme: p.theme || "corporate", design: p.design || {}, buttons: Array.isArray(p.buttons) ? p.buttons : ["save", "call", "whatsapp", "email"], phones, emails, website: p.website || "", address: p.address || "", socials, links: arr(p.links), blocks: arr(p.blocks) };
+  return { name: p.name || "", title: p.title || "", company: p.company || "", bio: p.bio || "", photo: p.photo || "", banner: p.banner || "", bannerType: p.bannerType || "image", theme: p.theme || "corporate", design: p.design || {}, buttons: Array.isArray(p.buttons) ? p.buttons : ["save", "call", "whatsapp", "email"], phones, emails, website: p.website || "", address: p.address || "", socials, links: arr(p.links), blocks: arr(p.blocks), pdfs: arr(p.pdfs), contactTitle: p.contactTitle || "", callLabel: p.callLabel || "", emailLabel: p.emailLabel || "", waLabel: p.waLabel || "", dirLabel: p.dirLabel || "", filesTitle: p.filesTitle || "", messagesTitle: p.messagesTitle || "" };
 }
 // The "Organisation page" layout (the look the client approved): logo, name, link cards, contact box, text boxes.
 export const isOrgPage = (card) => card.design?.template === "orgpage";
 export function orgPageData(card) {
-  return { image: card.photo, name: card.name, line1: card.company, line2: card.title, links: card.links.filter(l => l.title || l.url).map(l => ({ id: l.url + l.title, title: l.title, sub: l.sub || "", url: l.url, image: l.image || "" })), phone: card.phones[0] || "", phones: card.phones.slice(1).map(v => ({ value: v })), email: card.emails[0] || "", emails: card.emails.slice(1).map(v => ({ value: v })), whatsapp: card.socials.whatsapp || "", address: card.address, contactTitle: "Contact Us", dirLabel: "Direction", blocks: card.blocks.map((b, i) => ({ id: i, ...b })), files: [] };
+  return { image: card.photo, name: card.name, line1: card.company, line2: card.title, links: card.links.filter(l => l.title || l.url).map(l => ({ id: l.url + l.title, title: l.title, sub: l.sub || "", url: l.url, image: l.image || "" })), phone: card.phones[0] || "", phones: card.phones.slice(1).map(v => ({ value: v })), email: card.emails[0] || "", emails: card.emails.slice(1).map(v => ({ value: v })), whatsapp: card.socials.whatsapp || "", address: card.address, contactTitle: card.contactTitle || "Contact Us", callLabel: card.callLabel, emailLabel: card.emailLabel, waLabel: card.waLabel, dirLabel: card.dirLabel || "Direction", filesTitle: card.filesTitle || "Documents", messagesTitle: card.messagesTitle || "Messages", blocks: card.blocks.map((b, i) => ({ id: i, ...b })), files: card.pdfs.filter(f => f.url).map((f, i) => ({ id: i, title: f.title || "Document", url: f.url })) };
 }
 const vEsc = (s) => String(s || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/[,;]/g, m => "\\" + m);
 // "Add to Contact" saves the name, organisation, phone numbers, emails and links — never the private messages.
@@ -453,7 +453,7 @@ export function makeMemberVcf(card, orgName) {
   card.phones.forEach((n, i) => { const t = tel(n); if (t && !seen.has(t)) { seen.add(t); out.push(`TEL;TYPE=${i ? "WORK" : "CELL"}:${t}`); } });
   const wa = tel(card.socials.whatsapp || ""); if (wa && !seen.has(wa)) out.push(`TEL;TYPE=WORK:${wa}`);
   card.emails.forEach(e => out.push(`EMAIL:${vEsc(e)}`));
-  const urls = [card.website, ...["linkedin", "instagram", "facebook", "twitter"].map(k => card.socials[k]), ...card.links.map(l => l.url)].map(u => safeUrl(/^[\w.-]+\.[a-z]{2,}/i.test(u || "") && !/^https?:/i.test(u) ? "https://" + u : u)).filter(Boolean);
+  const urls = [card.website, ...["linkedin", "instagram", "facebook", "twitter"].map(k => card.socials[k]), ...card.links.map(l => l.url), ...card.pdfs.map(f => f.url)].map(u => safeUrl(/^[\w.-]+\.[a-z]{2,}/i.test(u || "") && !/^https?:/i.test(u) ? "https://" + u : u)).filter(Boolean);
   return ["BEGIN:VCARD", "VERSION:3.0", `N:${vEsc(nm.slice(1).join(" "))};${vEsc(nm[0])};;;`, `FN:${vEsc(nm.join(" "))}`, orgName ? `ORG:${vEsc(orgName)}` : "", ...out, ...[...new Set(urls)].map(u => `URL:${u}`), "END:VCARD"].filter(Boolean).join("\r\n");
 }
 
@@ -467,7 +467,7 @@ function StrList({ title, kind, items, onChange, add, ph }) {
           <Btn size="sm" kind="danger" icon="x" onClick={() => onChange(list.filter((_, j) => j !== i))} />
         </div>
       ))}
-      {list.length < 8 && <Btn size="sm" kind="soft" icon="plus" onClick={() => onChange([...list, ""])}>{add}</Btn>}
+      {list.length < 30 && <Btn size="sm" kind="soft" icon="plus" onClick={() => onChange([...list, ""])}>{add}</Btn>}
     </Fld>
   );
 }
@@ -481,6 +481,7 @@ function CardEditor({ card, members, uploader, onSave, onCancel, onApplyAll }) {
   const links = p.links || [];
   const orgPage = isOrgPage(p);
   const blocks = p.blocks || [];
+  const pdfs = p.pdfs || [];
   const soc = (k, v) => setP({ socials: { ...p.socials, [k]: v } });
   const body = { label: f.label, memberId: f.memberId, profile: p };
   return (
@@ -501,9 +502,9 @@ function CardEditor({ card, members, uploader, onSave, onCancel, onApplyAll }) {
         </div>
         <div className="sx-card" style={{ marginBottom: 10 }}>
           <h4 className="sx-h3" style={{ marginBottom: 8 }}>3 · Details</h4>
-          <Fld label="Full name"><input value={p.name} onChange={e => setP({ name: e.target.value })} /></Fld>
-          <Fld label={orgPage ? "Role or tagline (bold)" : "Job title"}><input value={p.title} onChange={e => setP({ title: e.target.value })} /></Fld>
-          <Fld label={orgPage ? "Organisation line" : "Company / organisation"}><input value={p.company} onChange={e => setP({ company: e.target.value })} /></Fld>
+          <Fld label={orgPage ? "Name (big, under the logo)" : "Full name"}><input value={p.name} onChange={e => setP({ name: e.target.value })} /></Fld>
+          <Fld label={orgPage ? "Designation (bold)" : "Job title"}><input value={p.title} onChange={e => setP({ title: e.target.value })} /></Fld>
+          <Fld label={orgPage ? "Party / organisation line" : "Company / organisation"}><input value={p.company} onChange={e => setP({ company: e.target.value })} /></Fld>
           <Fld label="Short bio / tagline"><textarea rows={3} maxLength={600} value={p.bio} onChange={e => setP({ bio: e.target.value })} /></Fld>
           <Fld label={orgPage ? "Logo / photo (round, at the top)" : "Photo"}><ImgUpload token={uploader} value={p.photo} onChange={v => setP({ photo: v })} label="Add photo" /></Fld>
           {!orgPage && <Fld label="Banner picture (some designs show it)"><ImgUpload token={uploader} value={p.banner} onChange={v => setP({ banner: v })} label="Add banner" /></Fld>}
@@ -528,7 +529,7 @@ function CardEditor({ card, members, uploader, onSave, onCancel, onApplyAll }) {
                   {orgPage && <div className="sx-row"><input placeholder="Small text, e.g. Click Here" value={l.sub || ""} onChange={e => up("sub", e.target.value)} /><ImgUpload compact token={uploader} value={l.image || ""} onChange={v => up("image", v)} label="Picture" /></div>}
                 </div>);
             })}
-            {links.length < 8 && <Btn size="sm" kind="soft" icon="plus" onClick={() => setP({ links: [...links, { title: "", url: "", sub: "", image: "" }] })}>Add link</Btn>}
+            {links.length < 30 && <Btn size="sm" kind="soft" icon="plus" onClick={() => setP({ links: [...links, { title: "", url: "", sub: "", image: "" }] })}>Add link</Btn>}
           </Fld>
           {orgPage && (
             <Fld label="Text boxes (e.g. Foundational Statements)">
@@ -537,17 +538,35 @@ function CardEditor({ card, members, uploader, onSave, onCancel, onApplyAll }) {
                   <div className="sx-row" style={{ marginBottom: 6 }}><input placeholder="Heading" value={b.title || ""} onChange={e => setP({ blocks: blocks.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} /><Btn size="sm" kind="danger" icon="x" onClick={() => setP({ blocks: blocks.filter((_, j) => j !== i) })} /></div>
                   <textarea rows={3} placeholder="One line per row" value={b.text || ""} onChange={e => setP({ blocks: blocks.map((x, j) => j === i ? { ...x, text: e.target.value } : x) })} />
                 </div>))}
-              {blocks.length < 6 && <Btn size="sm" kind="soft" icon="plus" onClick={() => setP({ blocks: [...blocks, { title: "", text: "" }] })}>Add a text box</Btn>}
+              {blocks.length < 12 && <Btn size="sm" kind="soft" icon="plus" onClick={() => setP({ blocks: [...blocks, { title: "", text: "" }] })}>Add a text box</Btn>}
             </Fld>
           )}
         </div>
+        <div className="sx-card" style={{ marginBottom: 10 }}>
+          <h4 className="sx-h3" style={{ marginBottom: 8 }}>PDF documents</h4>
+          <p className="sx-mut" style={{ marginBottom: 6 }}>Add as many as you need — visitors open them from the card and they are included in "Add to Contact".</p>
+          {pdfs.map((f, i) => (
+            <div key={i} style={{ background: K.fog, borderRadius: 10, padding: 8, marginBottom: 8 }}>
+              <div className="sx-row" style={{ marginBottom: 6 }}><input placeholder="Title, e.g. Membership form" value={f.title || ""} onChange={e => setP({ pdfs: pdfs.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} /><Btn size="sm" kind="danger" icon="x" onClick={() => setP({ pdfs: pdfs.filter((_, j) => j !== i) })} /></div>
+              <ImgUpload pdf compact token={uploader} value={f.url || ""} onChange={v => setP({ pdfs: pdfs.map((x, j) => j === i ? { ...x, url: v } : x) })} label="Upload PDF" />
+            </div>))}
+          {pdfs.length < 30 && <Btn size="sm" kind="soft" icon="plus" onClick={() => setP({ pdfs: [...pdfs, { title: "", url: "" }] })}>Add a PDF</Btn>}
+        </div>
+        {orgPage && (
+          <div className="sx-card" style={{ marginBottom: 10 }}>
+            <h4 className="sx-h3" style={{ marginBottom: 8 }}>Wording on the page (change any of it)</h4>
+            <div className="sx-two">
+              {[["contactTitle", "Contact box title", "Contact Us"], ["callLabel", "Phone rows", "Call Us"], ["emailLabel", "Email rows", "Email"], ["waLabel", "WhatsApp rows", "WhatsApp"], ["dirLabel", "Direction button", "Direction"], ["filesTitle", "PDF box title", "Documents"], ["messagesTitle", "Messages box title", "Messages"]].map(([k, l, ph]) => <Fld key={k} label={l}><input value={p[k] || ""} placeholder={ph} onChange={e => setP({ [k]: e.target.value })} /></Fld>)}
+            </div>
+          </div>
+        )}
         <div className="sx-card" style={{ marginBottom: 10 }}>
           <h4 className="sx-h3" style={{ marginBottom: 8 }}>5 · Buttons on the card</h4>
           {orgPage ? <p className="sx-mut">This set-up always shows the QR, Share and “Add to Contact” bar at the bottom.</p> : <Chips multi value={p.buttons} onChange={v => setP({ buttons: v })} options={BUTTONS.map(([id, label]) => ({ id, label }))} />}
         </div>
         <div className="sx-row sx-wrap" style={{ position: "sticky", bottom: 0, background: "#fff", padding: "10px 0" }}>
           <Btn onClick={() => onSave(body)}>{card ? "Save card" : "Create card"}</Btn>
-          <Btn kind="soft" onClick={() => onApplyAll(p)}>Use this design for all cards</Btn>
+          <Btn kind="soft" onClick={() => onApplyAll(p)}>Apply shared details to all cards</Btn>
           <Btn kind="soft" onClick={onCancel}>Cancel</Btn>
         </div>
       </WithPreview>
@@ -580,6 +599,7 @@ function CardsAdmin({ api, me, uploader }) {
   const [st, reload] = useAsync(async () => ({ cards: await api.get("admin/cards"), members: await api.get("admin/members") }), []);
   const [edit, setEdit] = useState(null); // "new" | card
   const [share, setShare] = useState(null);
+  const [dup, setDup] = useState(null);
   const [msg, act] = useAct();
   const [q, setQ] = useState("");
   if (st.loading && !st.data) return <Spinner />;
@@ -590,7 +610,11 @@ function CardsAdmin({ api, me, uploader }) {
     const r = await act(() => (edit === "new" ? api.post("admin/cards", b) : api.put(`admin/cards/${edit.id}`, b)), "Card saved.");
     if (r) { setEdit(null); reload(); }
   };
-  const applyAll = async (p) => { if (!window.confirm("Give every card in this organisation this design (template, colours, fonts)? Names and contact details stay as they are.")) return; await act(() => api.post("admin/cards-design", { design: p.design, theme: p.theme }), true); reload(); };
+  const applyAll = async (p) => {
+    if (!window.confirm("Copy the shared parts of this card to EVERY card in the organisation: design and colours, party line, link cards, text boxes, PDFs, address, logo and wording? Names, phones, emails and designations are NOT changed.")) return;
+    const shared = {}; ["design", "theme", "company", "address", "website", "links", "blocks", "pdfs", "photo", "banner", "bannerType", "contactTitle", "callLabel", "emailLabel", "waLabel", "dirLabel", "filesTitle", "messagesTitle"].forEach(k => { shared[k] = p[k]; });
+    await act(() => api.post("admin/cards-design", { shared }), true); reload();
+  };
   const doit = async (fn, ok, confirm) => { if (confirm && !window.confirm(confirm)) return; if (await act(fn, ok)) reload(); };
   if (edit) return <><Msg m={msg} /><CardEditor card={edit === "new" ? null : edit} members={members} uploader={uploader} onSave={save} onCancel={() => setEdit(null)} onApplyAll={applyAll} /></>;
   const shown = cards.filter(c => !q || `${c.label} ${c.memberName} ${c.profile?.name || ""}`.toLowerCase().includes(q.toLowerCase()));
@@ -626,6 +650,7 @@ function CardsAdmin({ api, me, uploader }) {
                   <td><div className="sx-row sx-wrap" style={{ gap: 4 }}>
                     <Btn size="sm" kind="soft" icon="edit" onClick={() => setEdit(c)}>Edit</Btn>
                     <Btn size="sm" kind="soft" icon="upload" onClick={() => setShare(c)}>Share</Btn>
+                    <Btn size="sm" kind="soft" icon="copy" onClick={() => setDup({ card: c, ids: [], copies: 1 })}>Duplicate</Btn>
                     {c.status === "active"
                       ? <Btn size="sm" kind="danger" onClick={() => doit(() => api.post(`admin/cards/${c.id}/deactivate`, { reason: "Deactivated by an admin" }), "Card deactivated.", "Deactivate this card? Anyone tapping it will see that it is no longer valid.")}>Deactivate</Btn>
                       : <Btn size="sm" onClick={() => doit(() => api.post(`admin/cards/${c.id}/reactivate`), "Card is active again.")}>Reactivate</Btn>}
@@ -635,6 +660,17 @@ function CardsAdmin({ api, me, uploader }) {
             })}</tbody>
           </table>
         </div>
+      )}
+      {dup && (
+        <Modal title="Duplicate this card" onClose={() => setDup(null)}>
+          <p className="sx-mut" style={{ marginBottom: 8 }}>Makes a copy of <b>{dup.card.label}</b> — same design, colours, party line, links, text boxes and PDFs — for each member you choose. Their own name, phone and email are filled in, and you can edit every personal detail afterwards (name, phones, emails, designation).</p>
+          <Fld label={`Members to make a card for (${dup.ids.length})`}>
+            <div className="sx-row sx-wrap" style={{ marginBottom: 6 }}><Btn size="sm" kind="soft" onClick={() => setDup({ ...dup, ids: members.filter(m => m.status === "active").map(m => m.id) })}>Select everyone</Btn><Btn size="sm" kind="soft" onClick={() => setDup({ ...dup, ids: [] })}>Clear</Btn></div>
+            <Chips multi value={dup.ids} onChange={v => setDup({ ...dup, ids: v })} options={members.filter(m => m.status === "active").map(m => ({ id: m.id, label: m.name }))} />
+          </Fld>
+          {dup.ids.length === 0 && <Fld label="…or how many blank copies?"><input type="number" min={1} max={50} value={dup.copies} onChange={e => setDup({ ...dup, copies: e.target.value })} /></Fld>}
+          <div className="sx-row"><Btn onClick={async () => { const r = await act(() => api.post(`admin/cards/${dup.card.id}/duplicate`, { memberIds: dup.ids, copies: Number(dup.copies) || 1 }), true); if (r) { setDup(null); reload(); } }}>Create {dup.ids.length || Number(dup.copies) || 1} card{(dup.ids.length || Number(dup.copies) || 1) === 1 ? "" : "s"}</Btn><Btn kind="soft" onClick={() => setDup(null)}>Cancel</Btn></div>
+        </Modal>
       )}
       {share && <SharePanel card={share} org={org} onClose={() => setShare(null)} onReissue={async () => { if (!window.confirm("Create a new link for a replacement tag? The old link stops working and shows “card replaced”.")) return; const r = await act(() => api.post(`admin/cards/${share.id}/reissue`), "New link created. Write it onto the replacement tag."); if (r) { setShare(null); reload(); } }} />}
     </div>
@@ -788,7 +824,7 @@ export function OrgSettings({ slug, orgToken, onSaved }) {
 /* ---------------------------------------------------------- card page */
 // The locked "Messages" section: closed until the card's own member types their code.
 function LockedNote() { return <div style={{ background: "#fff", borderRadius: 14, padding: 16, marginBottom: 14, color: "#222", fontSize: 14 }}><b>🔒 Private messages</b><div className="sx-mut" style={{ fontSize: 12.5 }}>Only the card's owner can open these, with their own code.</div></div>; }
-function LockedMessages({ token, tk, inline }) {
+function LockedMessages({ token, tk, inline, title }) {
   const [state, setState] = useState("closed"); // closed | ask | open
   const [code, setCode] = useState("");
   const [msgs, setMsgs] = useState([]);
@@ -803,7 +839,7 @@ function LockedMessages({ token, tk, inline }) {
   };
   const forgot = async () => { setBusy(true); try { const r = await oreq(`/card/${encodeURIComponent(token)}/forgot`, { method: "POST", body: {} }); setNote({ kind: "ok", text: r.message }); } catch (ex) { setNote({ kind: "err", text: ex.message }); } finally { setBusy(false); } };
   const lock = () => { setState("closed"); setMsgs([]); setCode(""); setNote({ kind: "", text: "" }); };
-  const head = <div className="sx-row" style={{ marginBottom: state === "closed" ? 0 : 10 }}><Ic n="lock" size={18} /><b className="sx-grow" style={{ fontSize: 16 }}>Private messages</b>{state === "open" && <button type="button" className="sx-mut" style={{ textDecoration: "underline" }} onClick={lock}>Lock</button>}</div>;
+  const head = <div className="sx-row" style={{ marginBottom: state === "closed" ? 0 : 10 }}><Ic n="lock" size={18} /><b className="sx-grow" style={{ fontSize: 16 }}>{title || "Private messages"}</b>{state === "open" && <button type="button" className="sx-mut" style={{ textDecoration: "underline" }} onClick={lock}>Lock</button>}</div>;
   if (state === "closed") return <div style={box}><button type="button" onClick={() => setState("ask")} style={{ width: "100%", textAlign: "left" }}>{head}<span className="sx-mut" style={{ fontSize: 12.5 }}>Only for the card's owner. Tap to enter your code.</span></button></div>;
   if (state === "ask") return (
     <div style={box}>{head}
@@ -912,7 +948,7 @@ export function CardPage({ token }) {
     return (
       <div style={{ background: "#0a1226" }}>
         <StudioStyles />
-        <OrgView data={orgPageData(card)} design={card.design} title={org.name} saveOverride={addC} qrStyle={org.design?.qr} qrLogo={org.logo} messagesNode={hasMessages ? <LockedMessages token={token} tk={{ font: "inherit" }} inline /> : undefined} />
+        <OrgView data={orgPageData(card)} design={card.design} title={org.name} saveOverride={addC} qrStyle={org.design?.qr} qrLogo={org.logo} messagesNode={hasMessages ? <LockedMessages token={token} tk={{ font: "inherit" }} inline title={card.messagesTitle} /> : undefined} />
         <div style={{ maxWidth: 448, margin: "0 auto", paddingBottom: 110 }}><LocBox /><Foot /></div>
       </div>
     );
@@ -936,13 +972,14 @@ export function CardPage({ token }) {
       <StudioStyles />
       <div style={{ maxWidth: 448, margin: "0 auto", background: tk.bgCss, minHeight: "100vh", paddingBottom: 110 }}>
         <div style={{ fontSize: "min(5vw, 22.4px)" }}><CardView card={card} actions={publicActions} bare /></div>
-        {(card.phones.length > 0 || card.emails.length > 0 || web || card.address || links.length > 0) && (
+        {(card.phones.length > 0 || card.emails.length > 0 || web || card.address || links.length > 0 || card.pdfs.length > 0) && (
           <div style={box}>
             {card.phones.map((p, i) => <a key={"p" + i} href={`tel:${p.replace(/\s/g, "")}`} style={{ display: "block", padding: "3px 0", color: "#222" }}>📞 {p}</a>)}
             {card.emails.map((e, i) => <a key={"e" + i} href={`mailto:${e}`} style={{ display: "block", padding: "3px 0", color: "#555", wordBreak: "break-all" }}>✉️ {e}</a>)}
             {web && safeUrl(web) && <a href={web} target="_blank" rel="noreferrer" style={{ display: "block", padding: "3px 0", color: "#555" }}>🌐 {card.website}</a>}
             {card.address && <p style={{ padding: "3px 0", color: "#555" }}>📍 {card.address}</p>}
             {links.map((l, i) => <a key={"l" + i} href={l.url} target="_blank" rel="noreferrer" style={{ display: "block", padding: "3px 0", color: tk.accent, fontWeight: 600 }}>{l.title || l.url}</a>)}
+            {card.pdfs.filter(f => safeUrl(f.url)).map((f, i) => <a key={"f" + i} href={f.url} target="_blank" rel="noreferrer" style={{ display: "block", padding: "3px 0", color: tk.accent, fontWeight: 600 }}>📄 {f.title || "Document"}</a>)}
           </div>
         )}
         {hasMessages && <LockedMessages token={token} tk={tk} />}

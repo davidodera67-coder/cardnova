@@ -876,7 +876,7 @@ export function OrgLook({ design, setDesign }) {
       </Fld>
       <Fld label="Fine-tune">
         <C k="bg1" label="Background (top)" /><C k="bg2" label="Background (bottom)" /><C k="swoosh" label="Main stripe" /><C k="swoosh2" label="Light stripe" />
-        <C k="title" label="Card headings" /><C k="accent" label="Small text & prices" /><C k="btn" label="Buttons" />
+        <C k="card" label="Card boxes" /><C k="title" label="Card headings" /><C k="accent" label="Small text & prices" /><C k="btn" label="Buttons" />
       </Fld>
     </div>
   );
@@ -1039,7 +1039,7 @@ export function OrgView({ data: d, design, title, preview, slug, chrome = true, 
   const menuItems = [
     showBoard && ["org-msgs", d.messagesTitle || "Messages"],
     links.length > 0 && ["org-links", "Links"],
-    files.length > 0 && ["org-files", "Documents"],
+    files.length > 0 && ["org-files", d.filesTitle || "Documents"],
     hasContact && ["org-contact", d.contactTitle || "Contact"],
     ...blocks.map((b, i) => b.title && [`org-b-${i}`, b.title]),
   ].filter(Boolean);
@@ -1092,7 +1092,7 @@ export function OrgView({ data: d, design, title, preview, slug, chrome = true, 
 
         {files.length > 0 && (
           <div id="org-files" style={{ ...card, padding: "14px 18px" }}>
-            <h2 style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 700, color: t.title }}>Documents</h2>
+            <h2 style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 700, color: t.title }}>{d.filesTitle || "Documents"}</h2>
             {files.map((f, i) => <a key={f.id || i} href={safeUrl(f.url) || "#"} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", textDecoration: "none", borderTop: i ? "1px solid #ececec" : "none", color: t.title }}><span style={{ color: t.accent, display: "flex" }}><Ic n="file" size={22} /></span><span style={{ flex: 1, fontSize: 16 }}>{f.title || "Document (PDF)"}</span><Ic n="download" size={18} color={t.accent} /></a>)}
           </div>
         )}
@@ -1103,9 +1103,9 @@ export function OrgView({ data: d, design, title, preview, slug, chrome = true, 
               <span style={{ width: 46, height: 46, borderRadius: "50%", background: t.btn, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic n="mobile" size={22} /></span>
               <h2 style={{ margin: 0, fontSize: 19, fontWeight: 500, color: t.title }}>{d.contactTitle || "Contact Us"}</h2>
             </div>
-            {oc.phones.map((x, i) => <a key={"p" + i} href={`tel:${x.value.replace(/\s/g, "")}`} style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>{x.label || "Call Us"}</span><span style={{ fontSize: 13.5, color: t.accent }}>{x.value}</span></a>)}
-            {oc.whatsapps.map((x, i) => <a key={"w" + i} href={`https://wa.me/${waNumber(x.value)}`} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>{x.label ? `WhatsApp · ${x.label}` : "WhatsApp"}</span><span style={{ fontSize: 13.5, color: t.accent }}>{x.value}</span></a>)}
-            {oc.emails.map((x, i) => <a key={"e" + i} href={`mailto:${x.value}`} style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>{x.label || "Email"}</span><span style={{ fontSize: 13.5, color: t.accent, wordBreak: "break-all" }}>{x.value}</span></a>)}
+            {oc.phones.map((x, i) => <a key={"p" + i} href={`tel:${x.value.replace(/\s/g, "")}`} style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>{x.label || d.callLabel || "Call Us"}</span><span style={{ fontSize: 13.5, color: t.accent }}>{x.value}</span></a>)}
+            {oc.whatsapps.map((x, i) => <a key={"w" + i} href={`https://wa.me/${waNumber(x.value)}`} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>{x.label ? `${d.waLabel || "WhatsApp"} · ${x.label}` : (d.waLabel || "WhatsApp")}</span><span style={{ fontSize: 13.5, color: t.accent }}>{x.value}</span></a>)}
+            {oc.emails.map((x, i) => <a key={"e" + i} href={`mailto:${x.value}`} style={{ display: "block", textDecoration: "none", marginBottom: 10 }}><span style={{ display: "block", fontSize: 18, color: t.title }}>{x.label || d.emailLabel || "Email"}</span><span style={{ fontSize: 13.5, color: t.accent, wordBreak: "break-all" }}>{x.value}</span></a>)}
             {d.address && <p style={{ margin: "0 0 12px", fontSize: 13.5, color: t.accent }}>{d.address}</p>}
             {d.address && <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(d.address)}`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: t.btn, color: "#fff", textDecoration: "none", padding: "10px 18px", borderRadius: 999, fontSize: 14.5 }}><Ic n="nav" size={15} />{d.dirLabel || "Direction"}</a>}
           </div>
