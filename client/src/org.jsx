@@ -233,7 +233,7 @@ function Signed({ slug, info, token, onOut }) {
     ...(lv >= 3 ? [{ id: "settings", label: "Settings", icon: "palette", min: 3 }] : []),
   ];
   const orgInfo = { ...info, name: me.org.name, design: me.org.design, logo: me.org.profile?.image || info.logo };
-  const profile = { ...(me.org.profile || {}), name: me.org.name };
+  const profile = { ...(me.org.profile || {}), name: me.org.profile?.name || me.org.name };
   return (
     <Shell info={orgInfo} wide>
       <div className="sx-row" style={{ color: "#fff", marginBottom: 12 }}>
@@ -769,7 +769,7 @@ function Account({ api, me, onSaved }) {
 }
 
 /* ----------------------------------------------------------- settings */
-const PAGE_FIELDS = (SOL_FIELDS) => SOL_FIELDS.filter(f => !["members", "messagesPin", "messages"].includes(f.k));
+const PAGE_FIELDS = (SOL_FIELDS) => SOL_FIELDS.filter(f => !["members", "messagesPin", "messages", "name"].includes(f.k));
 export function OrgSettings({ slug, orgToken, onSaved }) {
   const api = useMemo(() => orgApi.as(slug, orgToken), [slug, orgToken]);
   const uploader = useMemo(() => orgUploader(slug, orgToken), [slug, orgToken]);
@@ -780,14 +780,14 @@ export function OrgSettings({ slug, orgToken, onSaved }) {
   const fields = useMemo(() => PAGE_FIELDS(SOL.org.fields), []);
   if (st.loading || !d) return st.err ? <Note kind="err">{st.err}</Note> : <Spinner />;
   const save = async () => {
-    const body = { name: d.name, profile: { ...d.profile, name: d.name }, design: d.design, settings: d.settings };
+    const body = { name: d.name, profile: d.profile, design: d.design, settings: d.settings };
     if (await act(() => api.put("admin/settings", body), "Saved — the organisation name and page are updated.")) onSaved && onSaved();
   };
   const newCode = async () => { if (!window.confirm("Make a new join code? The old one stops working for new sign-ups.")) return; const r = await act(() => api.post("admin/join-code"), "New join code created."); if (r) setD({ ...d, joinCode: r.joinCode }); };
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const invite = `Join ${d.name} on CardNova: ${origin}/o/${slug}\nJoin code: ${d.joinCode}`;
   const memberUrl = `${origin}/o/${slug}`;
-  const pagePreview = <OrgView data={{ ...d.profile, name: d.name }} design={d.design} title={d.name} preview chrome={false} messagesNode={<PortalMessages messages={[{ id: "s", title: "Example message", body: "Your messages appear here.", at: new Date().toISOString(), author: "Admin" }]} t={orgTokens(d.design)} />} />;
+  const pagePreview = <OrgView data={{ ...d.profile, name: d.profile.name || "" }} design={d.design} title={d.name} preview chrome={false} messagesNode={<PortalMessages messages={[{ id: "s", title: "Example message", body: "Your messages appear here.", at: new Date().toISOString(), author: "Admin" }]} t={orgTokens(d.design)} />} />;
   return (
     <WithPreview label="Live preview of your members' page" preview={pagePreview}>
       <Msg m={msg} />
@@ -800,7 +800,8 @@ export function OrgSettings({ slug, orgToken, onSaved }) {
         <QRDesigner value={memberUrl} initial={d.design.qr} logo={d.profile.image || ""} filename={`${slug}-members`} title={d.name} caption="Scan to open" onChange={q => setD(x => ({ ...x, design: { ...x.design, qr: q } }))} />
       </div>
       <div className="sx-card" style={{ marginTop: 12 }}><h3 className="sx-h3">Organisation</h3>
-        <Fld label="Organisation name" hint="Saved together with everything below when you press Save."><input value={d.name} onChange={e => setD({ ...d, name: e.target.value })} /></Fld>
+        <Fld label="Organisation name" hint="e.g. Safina Party. Shown on the sign-in page, in the portal header and as the organisation in “Add to Contact”."><input value={d.name} onChange={e => setD({ ...d, name: e.target.value })} /></Fld>
+        <Fld label="Member's name" hint="The person's name shown big under the logo on this page, e.g. Candy Apondi Odhiambo. Saved together with everything below when you press Save."><input value={d.profile.name || ""} onChange={e => setD({ ...d, profile: { ...d.profile, name: e.target.value } })} /></Fld>
       </div>
       <div className="sx-card" style={{ marginTop: 12 }}><h3 className="sx-h3">Join code</h3>
         <p style={{ fontSize: 22, fontWeight: 700, letterSpacing: 3 }}>{d.joinCode}</p>
